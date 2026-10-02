@@ -87,7 +87,8 @@ externos. As regras estão em `tests/conftest.py`.
 Garantias da execução padrão:
 
 - **offline**: qualquer conexão a host que não seja loopback, ou resolução DNS, falha na hora com uma mensagem
-  pedindo o marcador adequado;
+  pedindo o marcador adequado. A guarda vale para o **processo Python dos testes**; um executável externo
+  chamado por subprocess não é coberto, então ela não é uma sandbox de rede absoluta;
 - bibliotecas da Hugging Face em modo offline (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`);
 - teste fora de `tests/unit/` ou `tests/compatibility/` é recusado na coleta;
 - `--strict-markers` e warnings tratados como erro.
