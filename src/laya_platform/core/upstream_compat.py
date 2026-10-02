@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -93,9 +92,9 @@ def resolve(api: InternalApi) -> Any:
     return target
 
 
-def check_question(question_id: str, definition: Mapping[str, Any]) -> None:
+def check_question(question_id: Any, definition: Any) -> None:
     """Validate one question with the upstream's own rules; raises ``ValueError`` naming it.
 
-    Needs torch (see :func:`resolve`).
+    Both arguments reach the upstream exactly as given. Needs torch (see :func:`resolve`).
     """
-    resolve(CHECK_QUESTION)(question_id, dict(definition))
+    resolve(CHECK_QUESTION)(question_id, definition)

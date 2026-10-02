@@ -147,7 +147,7 @@ schema:                            # JSON Schema (ou `questions:` no formato do 
   type: object
   properties:
     department: {type: string, enum: [billing, technical], description: "Qual equipe deve tratar?"}
-    urgency:    {type: integer, minimum: 0, maximum: 4, description: "Quão urgente é?"}
+    urgency:    {type: integer, minimum: 0, maximum: 4}   # sem description: instrução genérica do upstream
     churn_risk: {type: boolean, description: "O cliente ameaça cancelar?"}
 languages: [pt, en]                # códigos de idioma; declarativo nesta fase (não altera o roteamento)
 engine:
@@ -155,14 +155,27 @@ engine:
 ```
 
 - `spec.to_questions()` converte o schema pelo próprio `laya.structured.questions_from_json_schema` (nenhum
-  conversor próprio); `spec.predict_controls()` devolve `{"model": ...}` quando há `engine.checkpoint`.
-- Regras além do upstream, todas porque o upstream aceitaria algo que falha em silêncio: toda propriedade do
-  schema precisa de `description`; perguntas em `questions:` usam texto não vazio em `instructions`, rótulos e
-  níveis e respeitam os limites HTTP do `laya.serve` (64 perguntas, 100 opções por `choice`, 32 níveis por
-  `score`, 512 opções no total); YAML lido como YAML 1.2 (`no` continua sendo a string "no") e chaves duplicadas
-  recusadas em YAML e JSON.
-- Chaves de fases futuras são **recusadas com o motivo**, não ignoradas: `policy` (F6), `calibration_ref` (F4),
-  `risk` (F6), `mode` (F3), `engine.specialist` e `engine.fallback_checkpoint` (F7).
+  conversor próprio) e devolve as perguntas de `questions:` exatamente como escritas;
+  `spec.predict_controls()` devolve `{"model": ...}` quando há `engine.checkpoint`.
+
+Só três tipos de regra se aplicam:
+
+1. **Contrato do upstream** (o que pode ser perguntado): um `schema` é válido exatamente quando o
+   `laya.structured` o aceita; uma pergunta em `questions:` é válida exatamente quando o `Agent._check_question`
+   do `laya==0.3.23` a aceita. A `DecisionSpec` não recusa nada que o upstream aceite nem aceita nada que ele
+   recuse; a paridade é verificada contra o próprio upstream nos testes `torch` (`test_schema_contract.py`).
+2. **Segurança da configuração**: YAML lido como YAML 1.2 (`no` continua sendo a string "no"), chaves
+   duplicadas recusadas em YAML e JSON, `NaN`/`Infinity` e tags Python recusados.
+3. **Envelope da plataforma** (escopo da F2): `id`, `version`, `languages`, `engine.checkpoint`, exatamente uma
+   fonte (`schema` ou `questions`), chaves desconhecidas no nível do spec recusadas, e chaves de fases futuras
+   **recusadas com o motivo**: `policy` (F6), `calibration_ref` (F4), `risk` (F6), `mode` (F3),
+   `engine.specialist` e `engine.fallback_checkpoint` (F7).
+
+Recomendação de qualidade, **não** requisito: dê uma `description` a cada propriedade do schema. Sem ela o
+upstream gera uma instrução genérica ("What is `x`?"), que tende a decidir pior
+(`UPSTREAM_ANALYSIS.md` §3.9). Os limites HTTP do `laya.serve` (64 perguntas, 100 opções por `choice`, 32 níveis
+por `score`, 512 opções no total) valem para requisições a `/v1/systemone`, **não** para a `DecisionSpec`: um spec
+acima deles funciona no Python e recebe 413 por HTTP. Aplicá-los aos specs é uma decisão em aberto.
 
 ### 5.3 Contratos congelados
 

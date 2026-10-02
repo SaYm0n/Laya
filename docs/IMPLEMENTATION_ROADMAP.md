@@ -53,7 +53,8 @@ Entregue (detalhes em `DEVELOPMENT.md` §5 e `COMPATIBILITY_MATRIX.md` §11):
   `RemoteEngine` (cliente `/v1/systemone`, transporte injetável, sem servidor) e `FakeEngine` (determinístico, sem
   pesos). Operações e controles sem sentido para um adaptador geram erro explícito.
 - `DecisionSpec` (Pydantic, YAML/JSON): `id`, `version`, `schema` **ou** `questions`, `languages`,
-  `engine.checkpoint`; schema → perguntas pelo próprio `laya.structured`; chaves de fases futuras recusadas com o
+  `engine.checkpoint`; schema → perguntas pelo próprio `laya.structured`; aceita exatamente os schemas e as
+  perguntas que o upstream aceita (sem regras próprias sobre o conteúdo); chaves de fases futuras recusadas com o
   motivo; YAML 1.2 e chaves duplicadas recusadas.
 - `core/upstream_compat.py` como único ponto de acesso a internos do Laya (registro dos internos auditados e
   acessores preguiçosos); a guarda de arquitetura também detecta imports dinâmicos.

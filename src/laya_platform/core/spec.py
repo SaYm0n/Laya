@@ -10,45 +10,50 @@ phase (an optional upstream checkpoint). It is loaded from YAML or JSON::
       type: object
       properties:
         department: {type: string, enum: [billing, technical], description: "Qual equipe?"}
-        urgency: {type: integer, minimum: 0, maximum: 4, description: "Quão urgente é?"}
+        urgency: {type: integer, minimum: 0, maximum: 4}
         churn_risk: {type: boolean, description: "O cliente ameaça cancelar?"}
     languages: [pt, en]
     engine:
       checkpoint: multilingual
 
-What a spec does **not** carry yet, on purpose: confidence bands and ``calibration_ref`` (F4/F6),
-risk (F6), integration mode (F3) and specialists (F7). Those keys are refused with a message naming
-the phase, rather than accepted and ignored.
+Three kinds of rule apply, and only these:
 
-Rules beyond the upstream's, each because the upstream accepts something that fails silently:
+1. **The upstream contract** decides what may be asked. A ``schema`` is valid exactly when
+   ``laya.structured.questions_from_json_schema`` accepts it, and it is converted by that function
+   (a property without ``description`` gets the upstream's generic instruction, as in the
+   upstream). ``questions`` are valid exactly when the pinned ``Agent._check_question`` accepts them
+   (mirrored below, because the upstream check lives in a torch-importing module; the parity is
+   asserted against the upstream itself in tests/compatibility/test_schema_contract.py) and are
+   handed to the engine unchanged.
+2. **Configuration safety** of the file: YAML 1.2 booleans (``no`` stays the string "no", e.g.
+   the Norwegian language code), duplicate keys refused in YAML and JSON, no ``NaN``/``Infinity``,
+   no Python object tags.
+3. **The platform's own envelope** (this phase's scope): ``id``, ``version``, ``languages`` and
+   ``engine.checkpoint`` (a name the upstream Router accepts); keys of later phases -- confidence
+   bands and ``calibration_ref`` (F4/F6), risk (F6), integration mode (F3), specialists (F7) -- are
+   refused with the phase instead of being accepted and ignored.
 
-* every schema property needs a ``description`` (without one the upstream asks a generic
-  "What is `x`?", which docs/UPSTREAM_ANALYSIS.md §3.9 shows is a poor question);
-* a ``questions`` spec must fit the upstream HTTP limits (``laya.serve``), so the same spec works
-  in-process and over ``/v1/systemone``;
-* YAML booleans are YAML 1.2 (``true``/``false`` only: ``no`` stays the string "no", e.g. the
-  Norwegian language code) and duplicate keys are refused in YAML and JSON.
+Recommended, never enforced: a ``description`` on every schema property (docs/UPSTREAM_ANALYSIS.md
+§3.9 shows the generic instruction is a poor question).
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Self
 
 import yaml
 from laya.router import normalise_name
-from laya.serve import MAX_CHOICE_OPTIONS, MAX_QUESTIONS, MAX_SCORE_LEVELS, MAX_TOTAL_OPTIONS
 from laya.structured import SchemaError, questions_from_json_schema
 from pydantic import (
-    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
-    StrictBool,
     StrictInt,
     StrictStr,
     StringConstraints,
@@ -60,7 +65,6 @@ from pydantic import (
 from laya_platform.core.types import PredictControls, Questions
 
 ID_PATTERN = r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$"
-QUESTION_ID_PATTERN = r"^[A-Za-z_][A-Za-z0-9_.-]*$"
 LANGUAGE_PATTERN = r"^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
 SUPPORTED_SUFFIXES = (".yaml", ".yml", ".json")
 
@@ -82,15 +86,10 @@ class DecisionSpecError(ValueError):
     """A DecisionSpec could not be read or is invalid; the message names the file and the field."""
 
 
-def _not_blank(value: str) -> str:
-    if not value.strip():
-        raise ValueError("must not be blank")
-    return value
-
-
-Text = Annotated[StrictStr, AfterValidator(_not_blank)]
-QuestionId = Annotated[StrictStr, StringConstraints(pattern=QUESTION_ID_PATTERN, max_length=64)]
 LanguageCode = Annotated[StrictStr, StringConstraints(pattern=LANGUAGE_PATTERN)]
+
+#: Question types of the pinned upstream (``laya.common.QTYPES``, frozen in the contract tests).
+QUESTION_TYPES = ("choice", "score", "noul")
 
 
 def _refuse_not_yet(data: Any, reasons: Mapping[str, str], where: str) -> None:
@@ -104,123 +103,119 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class _Question(_Frozen):
-    instructions: Text
-    option_order: list[StrictInt] | None = None
+# ---------------------------------------------------- questions: the upstream's rules, mirrored
+def validate_question(question_id: Any, definition: Any) -> None:
+    """Accept or reject one question exactly as the pinned ``laya.agent.Agent._check_question``.
 
-    def option_count(self) -> int:
-        raise NotImplementedError
-
-    @model_validator(mode="after")
-    def _option_order_is_a_permutation(self) -> Self:
-        count = self.option_count()
-        if self.option_order is not None and sorted(self.option_order) != list(range(count)):
+    Same rules, in the same order, so a definition is valid here if and only if the upstream agent
+    accepts it; nothing is added. Kept in step by tests/compatibility/test_schema_contract.py, which
+    runs every case through the upstream validator too wherever torch is installed.
+    """
+    if question_id is None:
+        raise ValueError("question id must not be None")
+    if not isinstance(question_id, str | int) or (
+        isinstance(question_id, str) and not question_id.strip()
+    ):
+        raise ValueError(f"question id must be a non-empty string, got {question_id!r}")
+    name = f"question {question_id!r}"
+    if not isinstance(definition, dict):
+        raise ValueError(f"{name}: definition must be a dict, got {type(definition).__name__}")
+    kind = definition.get("type")
+    if not isinstance(kind, str) or kind not in QUESTION_TYPES:
+        raise ValueError(f"{name}: unknown type {kind!r}; use one of {sorted(QUESTION_TYPES)}")
+    if "instructions" not in definition:
+        raise ValueError(f"{name}: no 'instructions'; add the text the model should answer")
+    instructions = definition["instructions"]
+    if (
+        instructions is None
+        or (isinstance(instructions, str) and not instructions.strip())
+        or (isinstance(instructions, list | dict) and not instructions)
+        or not isinstance(instructions, str | dict | list | int | float)
+    ):
+        raise ValueError(
+            f"{name}: 'instructions' must be non-blank text, a non-empty object or list, "
+            f"or a number; got {instructions!r}"
+        )
+    criteria = definition.get("criteria")
+    if kind == "choice":
+        _check_choice_criteria(name, criteria)
+    elif kind == "score":
+        if not isinstance(criteria, list) or not criteria:
             raise ValueError(
-                f"option_order must be a permutation of range({count}), got {self.option_order}"
+                f"{name}: a score question takes 'criteria' as a non-empty list of levels"
             )
-        return self
-
-    def to_upstream(self) -> dict[str, Any]:
-        raise NotImplementedError
-
-    def _with_order(self, question: dict[str, Any]) -> dict[str, Any]:
-        if self.option_order is not None:
-            question["option_order"] = list(self.option_order)
-        return question
-
-
-class ChoiceQuestion(_Question):
-    """``criteria``: ``{label: description or null}`` or a list of labels, in display order."""
-
-    type: Literal["choice"]
-    criteria: dict[Text, StrictStr | None] | list[Text]
-
-    @field_validator("criteria")
-    @classmethod
-    def _labels(cls, value: dict[str, str | None] | list[str]) -> dict[str, str | None] | list[str]:
-        if not value:
-            raise ValueError("a choice question needs at least one option")
-        if isinstance(value, list) and len(set(value)) != len(value):
-            raise ValueError("choice labels must be unique: they are the answer keys")
-        return value
-
-    def option_count(self) -> int:
-        return len(self.criteria)
-
-    def to_upstream(self) -> dict[str, Any]:
-        criteria = dict(self.criteria) if isinstance(self.criteria, dict) else list(self.criteria)
-        question = {"type": self.type, "instructions": self.instructions, "criteria": criteria}
-        return self._with_order(question)
+        if None in criteria:
+            raise ValueError(f"{name}: score level {criteria.index(None)} is null")
+    elif criteria is not None and (
+        not isinstance(criteria, dict)
+        or not {str(k).lower() for k in criteria} <= {"true", "false"}
+    ):
+        raise ValueError(
+            f"{name}: a noul question takes 'criteria' keyed only 'true'/'false', or none"
+        )
+    if "option_order" in definition:
+        # As the upstream's _option_count: noul is the pair [false, true], otherwise one per entry.
+        if kind == "noul":
+            count = 2
+        else:
+            count = len(criteria) if isinstance(criteria, dict | list | tuple) else 0
+        order = definition["option_order"]
+        if (
+            not isinstance(order, list | tuple)
+            or len(order) != count
+            or sorted(i for i in order if isinstance(i, int) and not isinstance(i, bool))
+            != list(range(count))
+        ):
+            raise ValueError(
+                f"{name}: 'option_order' must be a permutation of range({count}), got {order!r}"
+            )
+    if "labels" in definition:
+        if kind != "noul":
+            raise ValueError(f"{name}: 'labels' is only supported for noul questions")
+        _check_noul_labels(name, definition["labels"])
 
 
-class ScoreQuestion(_Question):
-    """``criteria``: level descriptions, index 0 first."""
-
-    type: Literal["score"]
-    criteria: list[Text]
-
-    @field_validator("criteria")
-    @classmethod
-    def _levels(cls, value: list[str]) -> list[str]:
-        if not value:
-            raise ValueError("a score question needs at least one level")
-        return value
-
-    def option_count(self) -> int:
-        return len(self.criteria)
-
-    def to_upstream(self) -> dict[str, Any]:
-        question = {
-            "type": self.type,
-            "instructions": self.instructions,
-            "criteria": list(self.criteria),
-        }
-        return self._with_order(question)
-
-
-class NoulLabels(_Frozen):
-    """Model-facing texts of the two noul options; the answer is still P(true)."""
-
-    false: Text
-    true: Text
-
-    @model_validator(mode="after")
-    def _distinct(self) -> Self:
-        if self.false.strip() == self.true.strip():
-            raise ValueError("noul labels must be distinct")
-        return self
+def _check_choice_criteria(name: str, criteria: Any) -> None:
+    if not isinstance(criteria, dict | list):
+        raise ValueError(
+            f"{name}: a choice question takes 'criteria' as a dict of label -> description, "
+            "or a list of labels"
+        )
+    if not criteria:
+        raise ValueError(f"{name}: a choice question needs at least one criterion")
+    for index, label in enumerate(criteria):
+        if isinstance(label, list | dict | set | bytearray):
+            raise ValueError(f"{name}: choice label {index} must be a scalar, got {label!r}")
+        if label is None:
+            raise ValueError(f"{name}: choice label {index} is null")
+    if isinstance(criteria, list):
+        seen: dict[Any, int] = {}
+        for index, label in enumerate(criteria):
+            try:
+                first = seen.setdefault(label, index)
+            except TypeError:
+                raise ValueError(
+                    f"{name}: choice label {index} ({label!r}) is unhashable"
+                ) from None
+            if first != index:
+                raise ValueError(
+                    f"{name}: choice label {index} ({label!r}) repeats label {first} "
+                    "(1, 1.0 and True are one key)"
+                )
 
 
-class NoulQuestion(_Question):
-    """``criteria`` (optional) describes the ``true``/``false`` options; ``labels`` renames them."""
-
-    type: Literal["noul"]
-    criteria: dict[Literal["true", "false"] | StrictBool, StrictStr | None] | None = None
-    labels: NoulLabels | None = None
-
-    @field_validator("criteria")
-    @classmethod
-    def _boolean_keys(
-        cls, value: dict[str | bool, str | None] | None
-    ) -> dict[str | bool, str | None] | None:
-        # YAML reads `true:` as a boolean key; the upstream lower-cases str(key) the same way.
-        if value is not None and len({str(key).lower() for key in value}) != len(value):
-            raise ValueError("noul criteria name 'true' and 'false' at most once each")
-        return value
-
-    def option_count(self) -> int:
-        return 2
-
-    def to_upstream(self) -> dict[str, Any]:
-        question: dict[str, Any] = {"type": self.type, "instructions": self.instructions}
-        if self.criteria is not None:
-            question["criteria"] = {str(key).lower(): text for key, text in self.criteria.items()}
-        if self.labels is not None:
-            question["labels"] = {"false": self.labels.false, "true": self.labels.true}
-        return self._with_order(question)
-
-
-QuestionSpec = Annotated[ChoiceQuestion | ScoreQuestion | NoulQuestion, Field(discriminator="type")]
+def _check_noul_labels(name: str, labels: Any) -> None:
+    problem = (
+        f"{name}: noul labels must map exactly 'false' and 'true' to distinct non-empty strings"
+    )
+    if not isinstance(labels, dict) or set(labels) != {"false", "true"}:
+        raise ValueError(problem)
+    texts = [labels["false"], labels["true"]]
+    if not all(isinstance(text, str) for text in texts):
+        raise ValueError(problem)
+    false_text, true_text = (text.strip() for text in texts)
+    if not false_text or not true_text or false_text == true_text:
+        raise ValueError(problem)
 
 
 class EngineSettings(_Frozen):
@@ -250,7 +245,7 @@ class DecisionSpec(_Frozen):
     id: Annotated[StrictStr, StringConstraints(pattern=ID_PATTERN, max_length=128)]
     version: Annotated[StrictInt, Field(ge=1)]
     json_schema: dict[StrictStr, Any] | None = Field(default=None, alias="schema")
-    questions: dict[QuestionId, QuestionSpec] | None = None
+    questions: dict[Any, Any] | None = None
     languages: Annotated[tuple[LanguageCode, ...], Field(min_length=1)]
     engine: EngineSettings = Field(default_factory=EngineSettings)
 
@@ -259,6 +254,13 @@ class DecisionSpec(_Frozen):
     def _not_yet(cls, data: Any) -> Any:
         _refuse_not_yet(data, NOT_YET_SUPPORTED, "")
         return data
+
+    @field_validator("questions")
+    @classmethod
+    def _questions_the_upstream_accepts(cls, value: dict[Any, Any] | None) -> dict[Any, Any] | None:
+        for question_id, definition in (value or {}).items():
+            validate_question(question_id, definition)
+        return value
 
     @field_validator("languages")
     @classmethod
@@ -272,15 +274,20 @@ class DecisionSpec(_Frozen):
         if (self.json_schema is None) == (self.questions is None):
             raise ValueError("pass exactly one of 'schema' or 'questions'")
         if self.json_schema is not None:
-            _check_schema(self.json_schema)
-        if self.questions is not None:
-            _check_wire_limits(self.questions)
+            try:
+                questions_from_json_schema(self.json_schema)
+            except SchemaError as exc:
+                raise ValueError(f"schema is not supported by laya.structured: {exc}") from None
         return self
 
     def to_questions(self) -> Questions:
-        """The upstream questions this spec asks (a fresh dict on every call)."""
+        """The upstream questions this spec asks (a fresh copy on every call).
+
+        ``questions`` come back exactly as written; a ``schema`` goes through
+        ``laya.structured.questions_from_json_schema``.
+        """
         if self.questions is not None:
-            return {qid: question.to_upstream() for qid, question in self.questions.items()}
+            return copy.deepcopy(self.questions)
         questions: Questions = questions_from_json_schema(self.json_schema)
         return questions
 
@@ -290,50 +297,6 @@ class DecisionSpec(_Frozen):
         if self.engine.checkpoint is not None:
             controls["model"] = self.engine.checkpoint
         return controls
-
-
-def _check_schema(schema: dict[str, Any]) -> None:
-    try:
-        questions_from_json_schema(schema)
-    except SchemaError as exc:
-        raise ValueError(f"schema is not supported by laya.structured: {exc}") from None
-    undescribed = [
-        name
-        for name, prop in schema["properties"].items()
-        if not (isinstance(prop.get("description"), str) and prop["description"].strip())
-    ]
-    if undescribed:
-        raise ValueError(
-            f"schema properties without a 'description': {undescribed}; the description is the "
-            "question the model reads, and without one the upstream asks a generic one"
-        )
-
-
-def _check_wire_limits(
-    questions: Mapping[str, ChoiceQuestion | ScoreQuestion | NoulQuestion],
-) -> None:
-    # Same rules and the same constants as laya.serve's request gate, so a valid spec is also a
-    # valid /v1/systemone request (only choice and score options count towards the total there).
-    if len(questions) > MAX_QUESTIONS:
-        raise ValueError(f"too many questions ({len(questions)} > {MAX_QUESTIONS})")
-    total = 0
-    for qid, question in questions.items():
-        if isinstance(question, ChoiceQuestion) and question.option_count() > MAX_CHOICE_OPTIONS:
-            raise ValueError(
-                f"too many choice options for {qid!r} "
-                f"({question.option_count()} > {MAX_CHOICE_OPTIONS})"
-            )
-        if isinstance(question, ScoreQuestion) and question.option_count() > MAX_SCORE_LEVELS:
-            raise ValueError(
-                f"too many score levels for {qid!r} "
-                f"({question.option_count()} > {MAX_SCORE_LEVELS})"
-            )
-        if not isinstance(question, NoulQuestion):
-            total += question.option_count()
-    if total > MAX_TOTAL_OPTIONS:
-        raise ValueError(
-            f"too many answer options across questions ({total} > {MAX_TOTAL_OPTIONS})"
-        )
 
 
 # ------------------------------------------------------------------------------------------ loading

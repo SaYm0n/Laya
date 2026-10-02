@@ -1,4 +1,13 @@
-"""DecisionSpec: identity, sources, languages, engine settings, refused future keys and loading."""
+"""DecisionSpec rules that are not about what may be asked.
+
+What a schema or a question may contain is the upstream's decision, tested in
+tests/compatibility/test_schema_contract.py (the spec accepts exactly what the upstream accepts).
+This module covers the two other kinds of rule, and only these:
+
+* the platform's own envelope, as scoped for F2: ``id``, ``version``, ``languages``,
+  ``engine.checkpoint``, exactly one of ``schema``/``questions``, keys of later phases refused;
+* configuration safety of the file: YAML 1.2 booleans, duplicate keys, NaN, Python tags.
+"""
 
 from __future__ import annotations
 
@@ -54,6 +63,7 @@ def _error(data: Any) -> str:
     return str(error.value)
 
 
+# ============================================================== the platform's envelope (F2 scope)
 def test_a_minimal_spec() -> None:
     spec = parse_decision_spec(_spec())
     assert (spec.id, spec.version, spec.languages) == ("support.triage", 1, ("pt",))
@@ -165,7 +175,7 @@ def test_errors_name_every_field() -> None:
     assert "errors.pydantic.dev" not in message
 
 
-# -------------------------------------------------------------------------------------- loading
+# ======================================================== configuration safety of the spec file
 def test_yaml_and_json_load_the_same_spec(tmp_path: Path) -> None:
     yaml_file = tmp_path / "triage.yaml"
     yaml_file.write_text(YAML_SPEC, encoding="utf-8")
