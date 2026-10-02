@@ -12,11 +12,23 @@ num ciclo de dados para treinar **especialistas** do seu domínio.
 | fase | situação |
 |---|---|
 | F0 — auditoria do upstream e arquitetura | concluída |
-| F1 — bootstrap, licença, organização e CI | concluída (sem funcionalidades da plataforma ainda) |
-| F2 — Decision Core e testes de compatibilidade | próxima |
+| F1 — bootstrap, licença, organização e CI | concluída |
+| F2 — Decision Core e compatibilidade | concluída |
+| F3 — Gateway, auditoria e modo shadow | próxima |
 
-Hoje o pacote `laya_platform` contém apenas a CLI `laya-platform --version` e a infraestrutura do projeto
-(lockfile com hashes, testes, CI, verificações de segurança e de licença).
+O pacote `laya_platform` tem hoje o **Decision Core** (`laya_platform.core`): o protocolo `DecisionEngine`, cinco
+adaptadores (`UpstreamRouterEngine`, `AgentEngine`, `OnnxEngine`, `RemoteEngine`, `FakeEngine`), a `DecisionSpec`
+(YAML/JSON validada, schema → perguntas pelo próprio `laya.structured`) e a suíte que congela o contrato do
+`laya==0.3.23`. Ainda não há gateway, auditoria, política de decisão nem LLM.
+
+```python
+from laya_platform.core import load_decision_spec
+from laya_platform.core.adapters import UpstreamRouterEngine
+
+spec = load_decision_spec("minha_decisao.yaml")                 # formato em docs/DEVELOPMENT.md §5
+engine = UpstreamRouterEngine.create(default="multilingual")   # tráfego majoritariamente pt-BR
+payload = engine.predict({"body": "Quero cancelar"}, spec.to_questions(), **spec.predict_controls())
+```
 
 ## Começando
 
@@ -36,7 +48,7 @@ Instruções completas para Windows e Linux, categorias de teste e CI: [docs/DEV
 
 | documento | conteúdo |
 |---|---|
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | instalação, comandos, categorias de teste, CI, `main` protegida, atualização do upstream |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | instalação, comandos, categorias de teste, Decision Core, CI, `main` protegida, atualização do upstream |
 | [docs/UPSTREAM_ANALYSIS.md](docs/UPSTREAM_ANALYSIS.md) | o que o Laya 0.3.23 realmente oferece, limitações e riscos |
 | [docs/ARCHITECTURE_PROPOSAL.md](docs/ARCHITECTURE_PROPOSAL.md) | arquitetura, gate de governança de dados (DG-1) e divergências do plano original |
 | [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md) | fases 0–20, marcos e bloqueios |

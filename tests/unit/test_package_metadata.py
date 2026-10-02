@@ -40,6 +40,19 @@ def test_package_ships_a_typing_marker() -> None:
 
 
 def test_core_dependencies_stay_minimal() -> None:
-    # Optional capabilities arrive as extras in later phases; the core depends on laya only.
-    assert _pyproject()["project"]["dependencies"] == ["laya==0.3.23"]
+    # F2 adds what DecisionSpec imports directly (pydantic, PyYAML). Optional capabilities arrive
+    # as extras in later phases; none exists yet.
+    assert _pyproject()["project"]["dependencies"] == [
+        "laya==0.3.23",
+        "pydantic>=2.13.5,<3",
+        "pyyaml>=6.0.3,<7",
+    ]
     assert "optional-dependencies" not in _pyproject()["project"]
+
+
+def test_contract_test_tools_are_not_runtime_dependencies() -> None:
+    dev = _pyproject()["dependency-groups"]["dev"]
+    runtime = " ".join(_pyproject()["project"]["dependencies"])
+    for tool in ("fastapi", "httpx", "mcp"):
+        assert any(requirement.startswith(tool) for requirement in dev)
+        assert tool not in runtime

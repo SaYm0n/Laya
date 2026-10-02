@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import tarfile
+import tomllib
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
@@ -11,13 +12,16 @@ import pytest
 
 DIST_INFO = "laya_platform-0.1.0.dev0.dist-info"
 ENTRY_POINTS = "[console_scripts]\nlaya-platform = laya_platform.cli:main\n"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEPENDENCIES = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+    "dependencies"
+]
 GOOD_METADATA = """Metadata-Version: 2.4
 Name: laya-platform
 Version: 0.1.0.dev0
 License-Expression: Apache-2.0
 Classifier: Private :: Do Not Upload
-Requires-Dist: laya==0.3.23
-"""
+""" + "".join(f"Requires-Dist: {requirement}\n" for requirement in DEPENDENCIES)
 
 
 @pytest.fixture(scope="module")
@@ -61,6 +65,24 @@ def test_an_unpinned_or_extra_dependency_fails(dist: ModuleType, tmp_path: Path)
     metadata = GOOD_METADATA + "Requires-Dist: torch\n"
     problems = dist.check_wheel(_wheel(tmp_path / "w.whl", metadata=metadata))
     assert any("Requires-Dist" in p for p in problems)
+
+
+def test_the_wheel_must_declare_the_pyproject_dependencies(
+    dist: ModuleType, tmp_path: Path
+) -> None:
+    assert dist.declared_dependencies() == DEPENDENCIES
+    wheel = _wheel(tmp_path / "w.whl")
+    assert dist.check_wheel(wheel) == []
+    assert dist.check_wheel(wheel, expected=[*DEPENDENCIES, "rich"]) != []
+
+
+def test_the_upstream_pin_is_required_even_if_pyproject_drops_it(
+    dist: ModuleType, tmp_path: Path
+) -> None:
+    metadata = GOOD_METADATA.replace("Requires-Dist: laya==0.3.23\n", "Requires-Dist: laya>=0.3\n")
+    unpinned = [d if d != "laya==0.3.23" else "laya>=0.3" for d in DEPENDENCIES]
+    problems = dist.check_wheel(_wheel(tmp_path / "w.whl", metadata=metadata), expected=unpinned)
+    assert problems == ["w.whl: Requires-Dist must pin laya==0.3.23"]
 
 
 def test_a_wheel_without_the_no_upload_classifier_fails(dist: ModuleType, tmp_path: Path) -> None:

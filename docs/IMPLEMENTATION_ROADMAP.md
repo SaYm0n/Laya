@@ -1,6 +1,6 @@
 # Roadmap de implementação
 
-> Criado na Fase 0 e atualizado na Fase 1. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
+> Criado na Fase 0 e atualizado nas Fases 1 e 2. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
 > e produza os insumos da seguinte. A seção 3 mapeia a numeração original para a nova.
 
 ## 1. Marcos
@@ -41,14 +41,31 @@ Entregue (detalhes em `DEVELOPMENT.md`):
   build + verificação do pacote + `twine check`, job agregador `required`), `Security` (gitleaks, pip-audit,
   política de licenças), `Upstream watch` (semanal, só detecta e abre issue), `Full install` (lock completo, semanal
   e quando as dependências mudam); Dependabot para as actions.
-- Configuração recomendada de `main` protegida documentada (não aplicada: é configuração administrativa).
+- Configuração recomendada de `main` protegida documentada. Aplicada pelo mantenedor depois da F1: ruleset
+  "Proteção da main" ativo (ver `DEVELOPMENT.md` §10).
 
-### F2 — Decision Core e testes de compatibilidade
-- `DecisionEngine` + adaptadores `UpstreamRouterEngine`, `AgentEngine`, `OnnxEngine`, `RemoteEngine`, `FakeEngine`.
-- `DecisionSpec` (YAML/JSON validado por Pydantic) e conversão schema → perguntas via `laya.structured`.
-- `upstream_compat.py` como único ponto de contato com APIs internas.
-- `tests/compatibility/` conforme `COMPATIBILITY_MATRIX.md` §11 (sem pesos em todo PR; com pesos por marcador).
-- **Saída:** contrato do upstream congelado em testes; trocar a versão do `laya` quebra o CI se algo mudar.
+### F2 — Decision Core e testes de compatibilidade ✅
+Entregue (detalhes em `DEVELOPMENT.md` §5 e `COMPATIBILITY_MATRIX.md` §11):
+- `laya_platform.core`: protocolo `DecisionEngine` (`predict`, `predict_batch`, `route`, semântica do
+  `laya.Router`) com tipos `TypedDict` que descrevem o payload do upstream sem reconstruí-lo.
+- Adaptadores: `UpstreamRouterEngine` (fino sobre `laya.Router`, padrões do upstream preservados),
+  `AgentEngine` (um checkpoint, `laya.load`), `OnnxEngine` (`ONNXAgent`, runtime opcional importado só no uso),
+  `RemoteEngine` (cliente `/v1/systemone`, transporte injetável, sem servidor) e `FakeEngine` (determinístico, sem
+  pesos). Operações e controles sem sentido para um adaptador geram erro explícito.
+- `DecisionSpec` (Pydantic, YAML/JSON): `id`, `version`, `schema` **ou** `questions`, `languages`,
+  `engine.checkpoint`; schema → perguntas pelo próprio `laya.structured`; chaves de fases futuras recusadas com o
+  motivo; YAML 1.2 e chaves duplicadas recusadas.
+- `core/upstream_compat.py` como único ponto de acesso a internos do Laya (registro dos internos auditados e
+  acessores preguiçosos); a guarda de arquitetura também detecta imports dinâmicos.
+- `tests/compatibility/`: contratos sem pesos em todo PR (API Python, roteamento, schema, abstenção, semântica de
+  confiança, wire HTTP do app do upstream, ferramentas MCP, internos de treino), testes `torch` no Full install e
+  testes com pesos preparados (`--run-weights`), incluindo golden tests com tolerâncias justificadas.
+- Novas dependências de runtime: `pydantic` e `pyyaml`. `fastapi`, `httpx` e `mcp` entram só no grupo `dev`
+  (testes de contrato).
+- **Saída alcançada:** o contrato do upstream está congelado; `tests/unit/test_contract_drift.py` demonstra que
+  mudanças incompatíveis numa cópia do `laya` derrubam a suíte. Os testes com pesos não foram executados no
+  ambiente de nuvem (Hugging Face bloqueado): precisam de uma execução local para gravar o baseline dos golden
+  tests.
 
 ### F3 — Gateway, auditoria e modo shadow  *(M1)*
 - FastAPI montando `laya.serve.create_app(router)` para `/v1/systemone*`, com **contrato wire/API compatível** com o
@@ -191,6 +208,6 @@ versionada e testes de redação e expurgo.
 
 ## 5. Próximo passo
 
-Executar a **F2** (Decision Core e testes de compatibilidade). Ela não usa dados reais e não depende do gate DG-1;
-os testes com pesos da F2 rodam fora deste ambiente de nuvem (marcador `weights`). O nome `laya_platform` continua
-provisório.
+Executar a **F3** (gateway, auditoria e modo shadow), somente com dados sintéticos até o gate DG-1. Antes ou durante
+a F3, rodar uma vez a suíte com pesos numa máquina com acesso ao Hugging Face e gravar o baseline dos golden tests
+(`DEVELOPMENT.md` §8). O nome `laya_platform` continua provisório.

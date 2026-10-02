@@ -1,0 +1,217 @@
+{
+  "about": "Synthetic, public cases (no real data). Baseline answers are recorded per laya release with LAYA_PLATFORM_RECORD_GOLDEN=1; see tests/compatibility/test_golden_decisions.py.",
+  "cases": [
+    {
+      "id": "en-billing-refund",
+      "checkpoint": "english",
+      "state": "Hi, we were billed twice for March and need a refund for the duplicate charge.",
+      "questions": {
+        "team": {
+          "type": "choice",
+          "instructions": "Which team should handle this message?",
+          "criteria": {
+            "billing": "charges, invoices, refunds",
+            "technical": "login, bugs, access",
+            "sales": "plans, prices, new purchases"
+          }
+        },
+        "urgency": {
+          "type": "score",
+          "instructions": "How urgent is this message?",
+          "criteria": [
+            "not urgent",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "cancel": {
+          "type": "noul",
+          "instructions": "Does the customer want to cancel the service?"
+        }
+      }
+    },
+    {
+      "id": "en-login-broken",
+      "checkpoint": "english",
+      "state": "I can't log in since yesterday, the app says my password is wrong but I reset it twice.",
+      "questions": {
+        "team": {
+          "type": "choice",
+          "instructions": "Which team should handle this message?",
+          "criteria": {
+            "billing": "charges, invoices, refunds",
+            "technical": "login, bugs, access",
+            "sales": "plans, prices, new purchases"
+          }
+        },
+        "urgency": {
+          "type": "score",
+          "instructions": "How urgent is this message?",
+          "criteria": [
+            "not urgent",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "cancel": {
+          "type": "noul",
+          "instructions": "Does the customer want to cancel the service?"
+        }
+      }
+    },
+    {
+      "id": "en-negated-cancel",
+      "checkpoint": "english",
+      "state": "I do not want to cancel my subscription, I just want to change the billing date.",
+      "questions": {
+        "team": {
+          "type": "choice",
+          "instructions": "Which team should handle this message?",
+          "criteria": {
+            "billing": "charges, invoices, refunds",
+            "technical": "login, bugs, access",
+            "sales": "plans, prices, new purchases"
+          }
+        },
+        "cancel": {
+          "type": "noul",
+          "instructions": "Does the customer want to cancel the service?"
+        }
+      }
+    },
+    {
+      "id": "en-sales-question",
+      "checkpoint": "english",
+      "state": "What does the business plan cost per seat, and is there a discount for 50 seats?",
+      "questions": {
+        "team": {
+          "type": "choice",
+          "instructions": "Which team should handle this message?",
+          "criteria": {
+            "billing": "charges, invoices, refunds",
+            "technical": "login, bugs, access",
+            "sales": "plans, prices, new purchases"
+          }
+        },
+        "urgency": {
+          "type": "score",
+          "instructions": "How urgent is this message?",
+          "criteria": [
+            "not urgent",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        }
+      }
+    },
+    {
+      "id": "pt-cobranca-duplicada",
+      "checkpoint": "multilingual",
+      "state": "Fui cobrado duas vezes em março, quero o reembolso da cobrança duplicada.",
+      "questions": {
+        "equipe": {
+          "type": "choice",
+          "instructions": "Qual equipe deve tratar esta mensagem?",
+          "criteria": {
+            "cobranca": "cobranças, faturas, reembolsos",
+            "tecnico": "login, erros, acesso",
+            "vendas": "planos, preços, novas compras"
+          }
+        },
+        "urgencia": {
+          "type": "score",
+          "instructions": "Quão urgente é esta mensagem?",
+          "criteria": [
+            "nada urgente",
+            "baixa",
+            "média",
+            "alta",
+            "crítica"
+          ]
+        },
+        "cancelar": {
+          "type": "noul",
+          "instructions": "O cliente quer cancelar o serviço?"
+        }
+      }
+    },
+    {
+      "id": "pt-acesso",
+      "checkpoint": "multilingual",
+      "state": "Não consigo acessar minha conta desde ontem, já troquei a senha duas vezes.",
+      "questions": {
+        "equipe": {
+          "type": "choice",
+          "instructions": "Qual equipe deve tratar esta mensagem?",
+          "criteria": {
+            "cobranca": "cobranças, faturas, reembolsos",
+            "tecnico": "login, erros, acesso",
+            "vendas": "planos, preços, novas compras"
+          }
+        },
+        "urgencia": {
+          "type": "score",
+          "instructions": "Quão urgente é esta mensagem?",
+          "criteria": [
+            "nada urgente",
+            "baixa",
+            "média",
+            "alta",
+            "crítica"
+          ]
+        },
+        "cancelar": {
+          "type": "noul",
+          "instructions": "O cliente quer cancelar o serviço?"
+        }
+      }
+    },
+    {
+      "id": "pt-curto-cancelar",
+      "checkpoint": "multilingual",
+      "state": "Quero cancelar",
+      "questions": {
+        "equipe": {
+          "type": "choice",
+          "instructions": "Qual equipe deve tratar esta mensagem?",
+          "criteria": {
+            "cobranca": "cobranças, faturas, reembolsos",
+            "tecnico": "login, erros, acesso",
+            "vendas": "planos, preços, novas compras"
+          }
+        },
+        "cancelar": {
+          "type": "noul",
+          "instructions": "O cliente quer cancelar o serviço?"
+        }
+      }
+    },
+    {
+      "id": "pt-negacao",
+      "checkpoint": "multilingual",
+      "state": "Não quero cancelar, só quero mudar a data de vencimento da fatura.",
+      "questions": {
+        "equipe": {
+          "type": "choice",
+          "instructions": "Qual equipe deve tratar esta mensagem?",
+          "criteria": {
+            "cobranca": "cobranças, faturas, reembolsos",
+            "tecnico": "login, erros, acesso",
+            "vendas": "planos, preços, novas compras"
+          }
+        },
+        "cancelar": {
+          "type": "noul",
+          "instructions": "O cliente quer cancelar o serviço?"
+        }
+      }
+    }
+  ],
+  "baseline": null
+}

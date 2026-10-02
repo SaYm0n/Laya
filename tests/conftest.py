@@ -13,6 +13,15 @@ are skipped unless explicitly enabled:
     gpu      needs a CUDA/XPU/MPS device                          --run-gpu
     llm      calls an external LLM provider (implies network)    --run-llm
 
+One more marker states a *runtime* requirement instead of a resource. It is not opt-in: the test
+runs whenever the runtime is installed and is skipped (with the reason) when it is not.
+
+    torch    needs the torch runtime but no weights: skipped in the light profile, run by the
+             full install (the Full install workflow)
+
+``weights`` and ``gpu`` imply ``torch``: once enabled they still skip, with the reason, when torch
+is not installed.
+
 The default run is offline and deterministic: outbound connections from tests without a network
 permission raise immediately, and the Hugging Face libraries are put in offline mode.
 """
@@ -40,6 +49,11 @@ GATED_CATEGORIES: dict[str, str] = {
     "gpu": "needs a CUDA/XPU/MPS device",
     "llm": "calls an external LLM provider (implies network)",
 }
+RUNTIME_CATEGORIES: dict[str, str] = {
+    "torch": "needs the torch runtime but no weights (skipped when torch is not installed)",
+}
+#: Gates whose tests cannot run without a runtime even when enabled (real checkpoints need torch).
+IMPLIED_RUNTIMES = {"weights": "torch", "gpu": "torch"}
 NETWORK_PERMITTED = frozenset({"network", "weights", "llm"})
 OFFLINE_ENV = {
     "HF_HUB_OFFLINE": "1",
@@ -65,7 +79,7 @@ def _enabled(config: pytest.Config) -> set[str]:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    for name, help_text in {**BASE_CATEGORIES, **GATED_CATEGORIES}.items():
+    for name, help_text in {**BASE_CATEGORIES, **GATED_CATEGORIES, **RUNTIME_CATEGORIES}.items():
         config.addinivalue_line("markers", f"{name}: {help_text}")
     if not _enabled(config) & NETWORK_PERMITTED:
         os.environ.update(OFFLINE_ENV)
@@ -95,6 +109,18 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             flags = " ".join(f"--run-{name}" for name in missing)
             item.add_marker(
                 pytest.mark.skip(reason=f"gated: {', '.join(missing)} (enable {flags})")
+            )
+        markers = _marker_names(item)
+        runtimes = (markers & set(RUNTIME_CATEGORIES)) | {
+            runtime for gate, runtime in IMPLIED_RUNTIMES.items() if gate in markers
+        }
+        absent = sorted(name for name in runtimes if importlib.util.find_spec(name) is None)
+        if absent:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=f"needs {', '.join(absent)}: not installed (light profile); "
+                    "run by the full install (`uv sync --locked`, Full install workflow)"
+                )
             )
 
 

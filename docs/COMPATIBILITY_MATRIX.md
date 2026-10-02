@@ -1,7 +1,8 @@
 # Matriz de compatibilidade
 
-> Fase 0. Define **o que a plataforma promete manter compatível** com o Laya upstream (`laya==0.3.23`) e com o
-> protocolo Jev, e como cada promessa será verificada em `tests/compatibility/`.
+> Criada na Fase 0 e atualizada na Fase 2, quando os contratos foram implementados. Define **o que a plataforma
+> promete manter compatível** com o Laya upstream (`laya==0.3.23`) e com o protocolo Jev, e como cada promessa é
+> verificada em `tests/compatibility/` (§11).
 >
 > Legenda de status: **✅ upstream** = já existe no upstream e será reutilizado sem alteração ·
 > **🧩 envolver** = reutilizado através de adaptador · **🆕 novo** = construído pela plataforma ·
@@ -30,14 +31,14 @@
 | `score` → `score` (valor esperado), `probabilities` `"0".."k-1"`, `legend` | ✅ | ⚠️ Jev ecoa nível `null`; Laya rejeita (422) | ✅ upstream | idem |
 | `noul` → `noul` = P(true) | ✅ | ✅ | ✅ upstream | idem |
 | `labels` (somente `noul`) | ✅ | ❓ | ✅ upstream | idem |
-| `option_order` | ✅ | ❓ | ✅ upstream | `test_option_order.py` |
+| `option_order` | ✅ | ❓ | ✅ upstream | `test_schema_contract.py` (validação), `test_primitives_shape.py` (chaves da resposta) |
 | `confidence` | entropia normalizada (`choice`/`score`); `max(p)` (`noul`) | `(n·p_max − 1)/(n − 1)` | ⚠️ **nunca** reutilizar threshold Jev | `test_confidence_semantics.py` |
 | `answer_confidence` | `max(p)` | — | ✅ upstream; **único campo usado em gates** | idem |
 | `action.act_probability` | presente, sem sinal útil (#185) | — | ignorado pela plataforma | — |
-| `low_confidence`, `abstention`, `abstention_threshold` | só quando `min_confidence` é enviado | — | ✅ upstream | `test_abstention.py` |
+| `low_confidence`, `abstention`, `abstention_threshold` | só quando `min_confidence` é enviado | — | ✅ upstream; ⚠️ o gate do upstream usa `confidence` quando a resposta não traz `answer_confidence` | `test_abstention.py`, `test_confidence_semantics.py` |
 | `usage.input_tokens`, `usage.output_tokens` (=0) | ✅ | ✅ | ✅ upstream | `test_usage.py` |
 | `usage.state_tokens`, `state_tokens_dropped`, `truncated`, `truncated_questions`, `options` | ✅ | ❓ | ✅ upstream; **auditados** | idem |
-| `routing` (`model`, `repo`, `reason`, `detection`, `workflow`) | ✅ | ausente (clientes Jev ignoram) | ✅ upstream + bloco `platform` só em `/api/v1/*` | `test_routing_block.py` |
+| `routing` (`model`, `repo`, `reason`, `detection`, `workflow`) | ✅ | ausente (clientes Jev ignoram) | ✅ upstream + bloco `platform` só em `/api/v1/*` | `test_routing_contract.py`, `test_routing_block.py` |
 | `model` no corpo da resposta | `"laya-rl-agent"` (constante) | id do modelo Jev | ✅ upstream | idem |
 
 ## 3. HTTP
@@ -81,6 +82,9 @@
 | orçamento de tokens por requisição | 8192 (`LAYA_MAX_TOKEN_BUDGET`) | — | idem |
 | concorrência admitida | 16 (503 + `Retry-After`) | ❓ | idem + fila de micro-batching |
 
+Os limites, os status codes e as mensagens abaixo são verificados contra o próprio app do upstream em
+`test_http_wire_contract.py` (incluindo o 503 com `Retry-After: 1` quando a admissão está cheia).
+
 ### 3.4 Erros
 
 | status | upstream | plataforma |
@@ -100,7 +104,9 @@
 
 ## 4. API Python
 
-A plataforma **reexporta** e nunca sombreia nomes do `laya`. Contratos verificados (`test_python_api_contract.py`):
+A plataforma usa os nomes do `laya` diretamente e nunca os sombreia. Contratos verificados
+(`test_python_api_contract.py`; assinaturas lidas do código-fonte instalado, sem importar torch, e conferidas com
+`inspect` onde o torch está instalado):
 
 | superfície | assinatura/contrato fixado | status |
 |---|---|---|
@@ -118,8 +124,11 @@ A plataforma **reexporta** e nunca sombreia nomes do `laya`. Contratos verificad
 | `laya.fit_temperatures`, `Agent.save_calibration`/`load_calibration` | JSON versionado | ✅ upstream |
 | hooks: `PredictContext`, `BaseHook`, `AsyncHook`, eventos | 6 eventos, `run_id`, `ctx.skip()` | ✅ upstream |
 | presets: `triage_questions`, `email_questions`, `guard_questions`, `moderation_questions`, `router_questions` | ids e tipos das perguntas | ✅ upstream |
+| `laya.onnx_agent.ONNXAgent` (caminho documentado na referência da API) | `system_one`, `predict_batch`, `predict` ≡ `system_one` | 🧩 `OnnxEngine` |
+| `laya.serve.create_app(router)`, limites `MAX_*`, `BODY_CONTROLS`, `BODY_REFUSALS` | valores de 0.3.23 | ✅ upstream (wire em §3) |
 | `laya.__all__` | 51 nomes em 0.3.23 | snapshot congelado no teste |
-| **APIs internas usadas no treino** (`laya.common.build_model`, `build_sequence`, `render_options`, `proper_reward`, `collate_items`, `QTYPES`; `laya.agent._fix_tokenizer_config`) | não são API pública | 🧩 isoladas em `laya_platform.training.upstream_compat` com teste próprio |
+| Funções de treino **públicas** (`proper_reward`, `render_options`, `QTYPES`, `QTYPE_NAMES`, `td_lambda_targets`) | exportadas em `laya.__all__` | ✅ upstream (a matriz da F0 as listava como internas) |
+| **APIs internas** (`laya.common.build_model`, `build_sequence`, `collate_items`; `laya.agent._fix_tokenizer_config`, `Agent._check_question`) | não são API pública | 🧩 acessadas **somente** por `laya_platform.core.upstream_compat` (registro `INTERNAL_APIS`); assinaturas congeladas em `test_training_internals_contract.py` |
 
 ## 5. CLI
 
@@ -136,7 +145,7 @@ A plataforma **reexporta** e nunca sombreia nomes do `laya`. Contratos verificad
 | ferramenta | upstream | plataforma |
 |---|---|---|
 | `laya_predict`, `laya_predict_batch`, `laya_route`, `laya_route_batch`, `laya_decide`, `laya_shortlist`, `laya_preset`, `laya_status` | ✅ (stdio) | ✅ reutilizadas sem alteração |
-| `platform_health`, `platform_metrics`, `platform_specialists_list`, `platform_specialist_status`, `platform_calibration_report`, `platform_model_compare`, `platform_dataset_validate`, `platform_audit_query` | — | 🆕 **somente leitura** |
+| `platform_health`, `platform_metrics`, `platform_specialists_list`, `platform_specialist_status`, `platform_calibration_report`, `platform_model_compare`, `platform_dataset_validate`, `platform_audit_query` | — | 🆕 **somente leitura** (F10; nenhuma existe ainda) |
 | `platform_evaluate`, `platform_train`, `platform_promote`, `platform_rollback` | — | 🆕 **desligadas por padrão**; exigem confirmação explícita e escopo administrativo |
 | transporte HTTP (streamable) | ❌ | 🆕 opcional, sempre autenticado |
 
@@ -163,7 +172,7 @@ A plataforma **reexporta** e nunca sombreia nomes do `laya`. Contratos verificad
 | CPU | ✅ | ✅ | ~0,2–0,5 s por chamada (publicado) |
 | CUDA (cu128 / cu130) | ✅ | ✅ | |
 | Intel XPU | ✅ | best-effort | |
-| ONNX Runtime fp32 / INT8 per-tensor | ✅ | ✅ | INT8 per-channel é **proibido** (32% de concordância) |
+| ONNX Runtime fp32 / INT8 per-tensor | ✅ | ✅ (`OnnxEngine`; runtime opcional) | INT8 per-channel é **proibido** (32% de concordância). ⚠️ No 0.3.23 o `ONNXAgent` importa `laya.common`, logo **também exige torch** |
 | TileLang fast path | ✅ opcional | opcional | |
 | `torch.compile` | ✅ opcional | desligado por padrão | recompilação por shape |
 
@@ -191,17 +200,40 @@ existem apenas em arquivos de configuração e em documentação **datada**, com
 | OpenRouter | 🆕 `OpenRouterProvider` | ❓ |
 | Ollama / vLLM / OpenAI-compatível | 🆕 `OpenAICompatibleProvider` | modelos locais |
 
-## 11. Suíte de testes de compatibilidade planejada (`tests/compatibility/`)
+## 11. Suíte de testes de compatibilidade (`tests/compatibility/`)
 
-| arquivo | precisa de pesos? | o que garante |
-|---|:---:|---|
-| `test_upstream_pin.py` | não | versão instalada = versão fixada; hash do wheel confere |
-| `test_python_api_contract.py` | não | assinaturas e `__all__` (snapshot) |
-| `test_routing_contract.py` | não | precedência e motivos de roteamento (`Router.route`) |
-| `test_schema_contract.py` | não | JSON Schema → perguntas; erros de schema |
-| `test_abstention.py`, `test_confidence_semantics.py` | não | gate e semântica das confianças |
-| `test_http_wire_contract.py` | não (engine falso injetado em `create_app`) | schema, campos, tipos, valores, status codes, semântica de erros e limites, presença dos headers de contrato (`Server-Timing`) — comparação sobre o JSON interpretado, nunca binária |
-| `test_mcp_tools_contract.py` | não | nomes e esquemas das 8 ferramentas |
-| `test_training_internals_contract.py` | não | funções internas usadas pelo treino ainda existem e têm a mesma assinatura |
-| `test_primitives_shape.py`, `test_usage.py`, `test_routing_block.py` | **sim** | forma real das respostas com checkpoint |
-| `test_golden_decisions.py` | **sim** | decisões de referência (com tolerância) não regridem após atualização |
+Implementada na F2. **Sem pesos** = roda em todo PR (CI, perfil leve); **`torch`** = roda onde o torch está
+instalado (workflow Full install), sem pesos; **pesos** = `--run-weights`, fora do CI.
+
+| arquivo | execução | o que garante |
+|---|---|---|
+| `test_upstream_pin.py` | sem pesos | versão instalada = versão fixada; hashes do wheel e do sdist no lock; `import laya` não importa torch |
+| `test_python_api_contract.py` | sem pesos + `torch` | `laya.__all__` (51 nomes), assinaturas de `Agent`/`load`/`Router`/`ONNXAgent`/`structured`/`confidence`/`serve`/`shortlist`/calibração, aliases (`predict` ≡ `system_one`), registro de checkpoints, revisões revisadas, hooks, presets, limites HTTP; as opções e controles dos adaptadores são exatamente argumentos do upstream; leitura do código-fonte conferida com `inspect` (`torch`) |
+| `test_routing_contract.py` | sem pesos | precedência (`model` > `task` > workflow > `lang` > `lang_guess` > `Router(lang_guess)` > detecção > `default`), aliases, motivos, códigos de idioma, detecção (inclusive pt-BR curto → `default`), `route_batch`, o que `predict`/`predict_batch` acrescentam em volta do agente (Router real, agente substituto) e o `UpstreamRouterEngine` sem alterar nada |
+| `test_schema_contract.py` | sem pesos + `torch` | JSON Schema → perguntas (enum, `const`, booleano, inteiro limitado, `Optional`, `required` ignorado, descrições), rejeições com o caminho, limites (32/32/10), projeção dos valores; `DecisionSpec` sobre isso; regras de pergunta da `DecisionSpec` iguais às do `Agent._check_question` ou mais estritas (`torch`) |
+| `test_abstention.py` | sem pesos | `GATE_STATES`, validação de `min_confidence`, estados `passed`/`abstained`/`unevaluated`, eco do limiar, gate aplicado pelo Router, `FakeEngine` usando o gate do upstream, projeção para `None` em `decide` |
+| `test_confidence_semantics.py` | sem pesos + `torch` | `confidence` ≠ `answer_confidence` (e ≠ Jev); `answer_confidence_value` nunca cai para `confidence`; o gate do upstream cai (risco registrado); o código da plataforma nunca lê `confidence`; fórmulas do `FakeEngine` = fórmulas do upstream (`torch`) |
+| `test_http_wire_contract.py` | sem pesos | app do upstream (`create_app`) com Router real e agente substituto: schema, campos, tipos, valores, status 400/401/413/422/500/503, mensagens, limites, `/health`, batch, `Server-Timing`; o `RemoteEngine` fala esse contrato de ponta a ponta; comparação sobre o JSON interpretado, nunca binária |
+| `test_mcp_tools_contract.py` | sem pesos | as 8 ferramentas do servidor MCP do upstream, argumentos, tipos e obrigatórios; nenhuma ferramenta `platform_*` |
+| `test_training_internals_contract.py` | sem pesos + `torch` | os internos auditados existem com a mesma assinatura e o registro do `upstream_compat` nomeia exatamente esses; resolvem de fato onde há torch |
+| `test_primitives_shape.py` | pesos | forma real de `choice`/`score`/`noul`, `labels`, `option_order` |
+| `test_usage.py` | pesos | `usage` real: tokens, truncamento, opções colapsadas |
+| `test_routing_block.py` | pesos | o bloco `routing` é a rota que respondeu (também pelo app HTTP) |
+| `test_golden_decisions.py` | pesos (+ 1 teste sem pesos da comparação) | decisões de referência sintéticas contra um baseline gravado por release, com tolerâncias justificadas no módulo; falha se não houver baseline |
+
+`tests/unit/test_contract_drift.py` (sem pesos) aplica mudanças incompatíveis numa cópia do `laya` instalado e
+exige que cada uma derrube o teste que a guarda.
+
+### 11.1 Diferenças e limitações encontradas na F2
+
+| achado | consequência |
+|---|---|
+| `proper_reward`, `render_options`, `QTYPES` são públicos no 0.3.23 | só `build_model`, `build_sequence`, `collate_items`, `_fix_tokenizer_config` (e `Agent._check_question`) precisam do adaptador |
+| A localização do adaptador era citada como `training.upstream_compat` | corrigida: `laya_platform.core.upstream_compat` (canônica) |
+| `apply_confidence_gate` usa `confidence` quando falta `answer_confidence` | a `DecisionPolicy` (F6) deve ler `answer_confidence_value` e tratar `None` como não avaliado |
+| `ONNXAgent` importa torch via `laya.common` | ONNX no 0.3.23 não elimina o torch; imagens ONNX-CPU (F16) precisam reavaliar |
+| A validação autoritativa de perguntas (`Agent._check_question`) vive no módulo que importa torch | a `DecisionSpec` valida as perguntas com regras próprias, iguais ou mais estritas, conferidas contra o upstream nos testes `torch` |
+| `laya.structured` ignora `required`, transforma `const` em `choice` de uma opção e `number` com limites inteiros em `score` | congelado em `test_schema_contract.py`; propriedades opcionais continuam sendo perguntadas |
+| Sem `description`, o upstream pergunta "What is `x`?" | a `DecisionSpec` exige `description` em toda propriedade |
+| O `laya.Router` aceita só 3 nomes | confirmado (`unknown model`); especialistas continuam previstos para cima do Router (F7) |
+| `/v1/systemone` não tem rota de roteamento | `RemoteEngine.route` gera erro explícito; o roteamento vem no bloco `routing` de cada resposta |
