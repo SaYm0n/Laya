@@ -11,7 +11,11 @@
 
 1. A plataforma **não reimplementa** os primitivos do Laya. Toda decisão passa pelo pacote `laya` publicado.
 2. O namespace `/v1/systemone*` é servido **pelo próprio app do upstream** (`laya.serve.create_app(router)`), montado
-   dentro do gateway. Assim a resposta é idêntica à do `laya-serve`, byte a byte.
+   dentro do gateway. A promessa é de **compatibilidade de contrato wire/API**, não de igualdade binária: mesmo
+   schema, mesmos campos e tipos, valores equivalentes para a mesma entrada e o mesmo checkpoint (probabilidades com
+   tolerância numérica definida), mesmos status codes e a mesma semântica de erros e limites. Bytes de headers e do
+   corpo (ordem de chaves, espaços, headers acrescentados por middleware, versões de FastAPI/Starlette) podem variar
+   sem quebrar o contrato e **não** são comparados por igualdade.
 3. Tudo que é novo fica em **`/api/v1/*`** (HTTP), `laya_platform.*` (Python) e ferramentas MCP com prefixo
    `platform_*`. Nada novo entra em `/v1/*`, para não colidir com evoluções futuras do upstream ou do Jev.
 4. Toda promessa desta matriz tem um teste de contrato. Testes sem pesos rodam em todo PR; testes com pesos
@@ -42,7 +46,7 @@
 
 | endpoint | upstream `laya-serve` | Jev | plataforma | observação |
 |---|---|---|---|---|
-| `POST /v1/systemone` | ✅ | ✅ | ✅ montado do upstream | resposta idêntica |
+| `POST /v1/systemone` | ✅ | ✅ | ✅ montado do upstream | contrato wire/API compatível (validação semântica) |
 | `POST /v1/systemone/batch` | ✅ (≤ 64 estados) | ❓ | ✅ montado do upstream | |
 | `GET /health` | ✅ (detalhes só com bearer quando há chave) | ❓ | ✅ montado do upstream | liveness |
 | `GET /ready` | ❌ | ❓ | 🆕 | prontidão: checkpoints carregados, banco, flags |
@@ -173,12 +177,14 @@ A plataforma **reexporta** e nunca sombreia nomes do `laya`. Contratos verificad
 
 ## 10. Provedores LLM (System-2) — sem equivalente no upstream
 
-Nenhuma regra de negócio referencia nome de modelo. A configuração mapeia **tiers** (`small`, `medium`, `frontier`)
-para modelos concretos.
+O núcleo depende apenas de **provider + tier + capabilities**. Nenhuma regra de negócio, interface ou teste central
+pode depender de IDs concretos (`claude-*`, `gpt-*`, `gemini-*`, `deepseek-*` ou equivalentes); um teste de guarda
+(`tests/unit/test_model_id_guard.py`) falha se um desses padrões aparecer em `src/`, `scripts/` ou `tests/`. IDs concretos
+existem apenas em arquivos de configuração e em documentação **datada**, como a coluna abaixo.
 
 | provedor | adaptador | observação |
 |---|---|---|
-| Anthropic | 🆕 `AnthropicProvider` (SDK oficial `anthropic`) | IDs atuais confirmados: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
+| Anthropic | 🆕 `AnthropicProvider` (SDK oficial `anthropic`) | referência datada (2026-10-02), apenas exemplo de configuração: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
 | OpenAI | 🆕 `OpenAIProvider` | IDs de modelo ❓ (não verificados nesta auditoria) |
 | Google Gemini | 🆕 `GeminiProvider` | ❓ |
 | DeepSeek | 🆕 `DeepSeekProvider` (API compatível OpenAI) | ❓ |
@@ -194,7 +200,7 @@ para modelos concretos.
 | `test_routing_contract.py` | não | precedência e motivos de roteamento (`Router.route`) |
 | `test_schema_contract.py` | não | JSON Schema → perguntas; erros de schema |
 | `test_abstention.py`, `test_confidence_semantics.py` | não | gate e semântica das confianças |
-| `test_http_wire_contract.py` | não (engine falso injetado em `create_app`) | campos, códigos de erro, limites, headers `Server-Timing` |
+| `test_http_wire_contract.py` | não (engine falso injetado em `create_app`) | schema, campos, tipos, valores, status codes, semântica de erros e limites, presença dos headers de contrato (`Server-Timing`) — comparação sobre o JSON interpretado, nunca binária |
 | `test_mcp_tools_contract.py` | não | nomes e esquemas das 8 ferramentas |
 | `test_training_internals_contract.py` | não | funções internas usadas pelo treino ainda existem e têm a mesma assinatura |
 | `test_primitives_shape.py`, `test_usage.py`, `test_routing_block.py` | **sim** | forma real das respostas com checkpoint |

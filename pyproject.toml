@@ -1,0 +1,172 @@
+[build-system]
+requires = ["uv_build>=0.12.22,<0.13.0"]
+build-backend = "uv_build"
+
+[project]
+# Provisional name. Independent project built on top of Laya; not affiliated with Convai Innovations.
+name = "laya-platform"
+version = "0.1.0.dev0"
+description = "Production decision platform built on top of Laya (independent project, not affiliated with Convai Innovations)."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "SaYm0n" }]
+requires-python = ">=3.11,<3.13"
+classifiers = [
+    # PyPI refuses uploads carrying this classifier: nothing is published in this phase.
+    "Private :: Do Not Upload",
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+# The core stays minimal. Laya is consumed as a pinned external dependency (see docs/ARCHITECTURE_PROPOSAL.md);
+# optional capabilities arrive as extras in the phases that need them.
+dependencies = [
+    "laya==0.3.23",
+]
+
+[project.urls]
+Repository = "https://github.com/SaYm0n/Laya"
+Upstream = "https://github.com/NandhaKishorM/laya"
+
+[project.scripts]
+laya-platform = "laya_platform.cli:main"
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.15",
+    "mypy>=2.4.0",
+    "packaging>=26.0",
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+audit = [
+    "pip-audit>=2.10.1",
+]
+package = [
+    "twine>=7.0.0",
+]
+
+[tool.uv]
+required-version = ">=0.12.22,<0.13"
+default-groups = ["dev"]
+
+# ---------------------------------------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+# Markdown code blocks in docs/ are illustrative pseudo-code, not formatted sources.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+    "A",    # builtins shadowing
+    "B",    # bugbear
+    "BLE",  # blind except
+    "C4",   # comprehensions
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # naming
+    "PT",   # pytest style
+    "PTH",  # pathlib
+    "RUF",  # ruff-specific
+    "S",    # bandit (security)
+    "SIM",  # simplify
+    "T20",  # print statements
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]                       # assert is how pytest works
+"src/laya_platform/cli.py" = ["T201"]       # the CLI prints by design
+"scripts/**" = ["T201"]                     # CI scripts report to stdout
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+files = ["src", "tests", "scripts"]
+explicit_package_bases = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# laya ships no py.typed marker; it is used through narrow, tested adapters only.
+module = ["laya", "laya.*"]
+ignore_missing_imports = true
+
+# -------------------------------------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib", "-p", "pytester"]
+xfail_strict = true
+filterwarnings = ["error"]
+# Test categories and markers are registered in tests/conftest.py (single source of truth).
+
+# ------------------------------------------------------------------------------------- import-linter
+[tool.importlinter]
+root_packages = ["laya_platform"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "The core stays free of ML runtimes and AI frameworks"
+type = "forbidden"
+source_modules = ["laya_platform"]
+forbidden_modules = [
+    "anthropic",
+    "crewai",
+    "google",
+    "langchain",
+    "langchain_core",
+    "langgraph",
+    "llama_index",
+    "onnxruntime",
+    "openai",
+    "torch",
+    "transformers",
+]
+
+# import-linter cannot forbid submodules of an external package (laya.common, laya.agent, ...).
+# That rule -- laya internals only through the future upstream_compat adapter -- is enforced by
+# tests/unit/test_architecture_imports.py instead.
+
+# --------------------------------------------------------------------------------- license policy
+# Read by scripts/check_licenses.py. Evaluated against PyPI metadata of every package in uv.lock.
+[tool.laya-platform.license-policy]
+allowed = [
+    "0BSD",
+    "Apache-2.0",
+    "BSD",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CNRI-Python",
+    "HPND",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MIT-CMU",
+    "MPL-2.0",
+    "PSF-2.0",
+    "Python-2.0",
+    "Unlicense",
+    "Zlib",
+]
+denied = ["AGPL", "GPL", "SSPL", "BUSL", "Commons-Clause"]
+
+[tool.laya-platform.license-policy.exceptions]
+# package (glob) = "why it is accepted". Every exception is reviewed before shipping images (F16).
+"nvidia-*" = "NVIDIA proprietary CUDA runtime pulled by the Linux torch wheel; not vendored or redistributed by this repository; CPU-only images will avoid it (review in F16)"
+"cuda-toolkit" = "NVIDIA CUDA metapackage pulled by the Linux torch wheel; same treatment as nvidia-*"
+"mypy-extensions" = "dev-only; PyPI metadata has no license field; the sdist LICENSE file is MIT (verified 2026-10-02)"

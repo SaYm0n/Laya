@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------- secrets: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+.netrc
+.pypirc
+credentials*.json
+service-account*.json
+secrets/
+.secrets/
+# Hugging Face and other provider tokens
+.huggingface/
+**/huggingface/token
+**/huggingface/stored_tokens
+
+# ---------------------------------------------------------------- models / weights: never commit
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.gguf
+*.h5
+/models/
+/checkpoints/
+/weights/
+/hf_cache/
+/.hf_cache/
+
+# ---------------------------------------------------------------- real data: never commit
+/data/
+/datasets/
+/exports/
+/artifacts/
+/runs/
+/outputs/
+/calibration/
+*.parquet
+*.records.jsonl
+*.sqlite
+*.sqlite3
+*.db
+
+# ---------------------------------------------------------------- python / tooling
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv*/
+venv/
+.python-version.local
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+*.log
+
+# ---------------------------------------------------------------- editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

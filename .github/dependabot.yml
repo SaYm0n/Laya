@@ -1,0 +1,13 @@
+# Keeps the SHA-pinned GitHub Actions current. Python dependencies are upgraded deliberately with
+# `uv lock --upgrade` (and laya only through the upstream checklist), never by a bot.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

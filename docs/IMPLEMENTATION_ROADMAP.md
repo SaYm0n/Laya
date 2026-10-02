@@ -1,13 +1,13 @@
 # Roadmap de implementação
 
-> Fase 0. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
+> Criado na Fase 0 e atualizado na Fase 1. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
 > e produza os insumos da seguinte. A seção 3 mapeia a numeração original para a nova.
 
 ## 1. Marcos
 
 | marco | ao final da fase | o que você consegue fazer |
 |---|---|---|
-| **M1 — Shadow pronto** | F3 | ligar a plataforma a um sistema existente em modo shadow, sem risco, coletando dados reais |
+| **M1 — Shadow pronto** | F3 + DG-1 | ligar a plataforma a um sistema existente em modo shadow, sem risco; com dados reais somente após o gate DG-1 |
 | **M2 — Advisory calibrado em pt-BR** | F4 | mostrar sugestões calibradas a humanos, com thresholds justificados por relatório |
 | **M3 — System-1/System-2** | F6 | automatizar a banda segura e escalar o resto para LLM ou humano |
 | **M4 — Primeiro especialista** | F8 | treinar, calibrar, avaliar e promover um especialista próprio a partir dos dados coletados |
@@ -23,15 +23,25 @@ pendências listados, nenhuma funcionalidade do upstream removida.
 Entregue: `UPSTREAM_ANALYSIS.md`, `ARCHITECTURE_PROPOSAL.md`, `IMPLEMENTATION_ROADMAP.md`,
 `COMPATIBILITY_MATRIX.md`, `LICENSE_AND_ATTRIBUTION.md`.
 
-### F1 — Bootstrap, licença, organização e CI
-- `pyproject.toml` (uv), pacote `src/laya_platform`, `laya==0.3.23` fixado com hash no `uv.lock`; extras por área.
-- Ferramentas: ruff, mypy (estrito nos módulos novos), pytest com marcadores `weights`, `gpu`, `network`, `llm`;
-  `import-linter` com as fronteiras entre subpacotes; pre-commit.
-- `LICENSE`, `NOTICE`, aviso de não afiliação no README, `.gitignore` (inclui `.env`, pesos, datasets), `.env.example`.
-- CI (GitHub Actions, actions fixadas por SHA): lint, tipos, testes sem pesos em 3.11 e 3.12 (Linux) + 3.12 (Windows),
-  gitleaks, pip-audit, verificação de licenças das dependências.
-- Workflow semanal que **detecta** nova versão do `laya` e abre uma issue com o changelog — nunca atualiza sozinho.
-- **Saída:** CI verde num esqueleto vazio; `laya_platform --version` funciona.
+### F1 — Bootstrap, licença, organização e CI ✅
+Entregue (detalhes em `DEVELOPMENT.md`):
+- `pyproject.toml` (uv, `uv_build`), pacote `src/laya_platform` com a CLI `laya-platform --version`;
+  `laya==0.3.23` fixado e `uv.lock` com hashes sha256 (resolução universal, Python 3.11 e 3.12). O hash do wheel e
+  do sdist do `laya` no lock é verificado contra o registrado na auditoria.
+- Núcleo mínimo: única dependência `laya`; grupos `dev`, `audit` e `package`; nenhum extra ainda. Classificador
+  `Private :: Do Not Upload` impede publicação acidental.
+- ruff, mypy estrito, import-linter (núcleo sem runtimes de ML/frameworks), pre-commit com hooks fixados por SHA
+  (inclui gitleaks e `no-commit-to-branch` para a `main`).
+- Testes em `tests/unit/` e `tests/compatibility/`; marcadores `network`, `weights`, `gpu`, `llm` desligados por
+  padrão; execução padrão offline com bloqueio de rede verificado. Guardas automáticas: internos do Laya só via
+  adaptador, nenhum ID concreto de modelo LLM no código, nada de segredos/pesos/dados no git.
+- `LICENSE` (Apache-2.0), `NOTICE` com aviso de independência, `.gitignore`, `.env.example` sem segredos,
+  `.gitattributes` (LF em Windows e Linux).
+- GitHub Actions com actions fixadas por SHA: `CI` (lock, lint, tipos, testes em Ubuntu 3.11/3.12 e Windows 3.12,
+  build + verificação do pacote + `twine check`, job agregador `required`), `Security` (gitleaks, pip-audit,
+  política de licenças), `Upstream watch` (semanal, só detecta e abre issue), `Full install` (lock completo, semanal
+  e quando as dependências mudam); Dependabot para as actions.
+- Configuração recomendada de `main` protegida documentada (não aplicada: é configuração administrativa).
 
 ### F2 — Decision Core e testes de compatibilidade
 - `DecisionEngine` + adaptadores `UpstreamRouterEngine`, `AgentEngine`, `OnnxEngine`, `RemoteEngine`, `FakeEngine`.
@@ -41,22 +51,34 @@ Entregue: `UPSTREAM_ANALYSIS.md`, `ARCHITECTURE_PROPOSAL.md`, `IMPLEMENTATION_RO
 - **Saída:** contrato do upstream congelado em testes; trocar a versão do `laya` quebra o CI se algo mudar.
 
 ### F3 — Gateway, auditoria e modo shadow  *(M1)*
-- FastAPI montando `laya.serve.create_app(router)` para `/v1/systemone*` (idêntico ao upstream).
+- FastAPI montando `laya.serve.create_app(router)` para `/v1/systemone*`, com **contrato wire/API compatível** com o
+  upstream (schema, campos, valores, status codes e semântica validados sobre o JSON interpretado; sem igualdade binária).
 - `/health`, `/ready`, `/metrics`, `/api/v1/decide`, `/api/v1/route` (rota ainda só System-1), autenticação por chave
   com escopos, limites, micro-batching.
 - Hooks de auditoria (HMAC, redação), persistência SQLite/PostgreSQL com Alembic.
 - Modos 0–2 por DecisionSpec, *feature flags*, kill switch; cliente mínimo para o sistema existente com chamada
   shadow assíncrona (outbox).
 - `docker-compose` de desenvolvimento (gateway + PostgreSQL).
+- Implementada e testada **somente com dados sintéticos**; o gateway recusa iniciar com dados reais sem referência a
+  uma aprovação DG-1 válida.
 - **Saída:** um sistema real pode chamar a plataforma em shadow sem nenhum efeito colateral; os registros de
   auditoria são suficientes para reconstruir a comparação.
+
+### Gate DG-1 — Data Governance Gate  *(bloqueante antes de qualquer dado real)*
+Não é uma fase de implementação extensa; é um portão. Antes de shadow com dados reais, avaliação sobre exportações
+reais (F4), criação de datasets (F8) ou envio de dados a LLMs (F5/F6/F8), precisam estar definidos e aprovados:
+classificação de dados; PII/LGPD; retenção; criptografia; controle de acesso; audit logs; datasets de treino; envio
+ou proibição de envio a LLMs externos (proibido por padrão); sanitização/redação; exclusão/expurgo.
+Detalhes em `ARCHITECTURE_PROPOSAL.md` §6.15. Evidência: `docs/DATA_GOVERNANCE.md` aprovado, configuração
+versionada e testes de redação e expurgo.
 
 ### F4 — Avaliação e calibração  *(M2)*
 - Métricas além do `laya.evals`: precisão/recall/F1, matriz de confusão, Brier, NLL, ECE + diagrama de
   confiabilidade, FPR/FNR, cobertura × risco, abstenção, p50/p95/p99, custo, tudo por fatia.
 - Relatórios JSON/Markdown com identidade (dataset sha256, revisão, versão do pacote).
 - Ajuste de temperaturas (`fit_temperatures`) por decisão e idioma; seleção de bandas por custo de erro.
-- Conjunto de avaliação pt-BR inicial (curto, negação, ruído, mistura pt/en) — **precisa de dados do seu domínio**.
+- Conjunto de avaliação pt-BR inicial (curto, negação, ruído, mistura pt/en) — **precisa de dados do seu domínio**;
+  com dados reais, só após o gate DG-1.
 - **Saída:** cada DecisionSpec tem uma política com `calibration_ref`; modo advisory habilitado.
 
 ### F5 — LLM Gateway
@@ -78,6 +100,7 @@ Entregue: `UPSTREAM_ANALYSIS.md`, `ARCHITECTURE_PROPOSAL.md`, `IMPLEMENTATION_RO
 - **Saída:** um checkpoint externo pode ser registrado, colocado em shadow e revertido sem deploy.
 
 ### F8 — Pipeline de dados e treino  *(M4)*
+- Pré-requisito: gate DG-1 aprovado (dados reais e envio a LLM professor).
 - Ingestão CSV/XLSX/JSON/JSONL/Parquet/PostgreSQL; validação de schema; sanitização de PII; deduplicação.
 - Amostragem ativa a partir da auditoria; rotulagem por LLM professor (distribuições) + revisão humana (ouro);
   medição de qualidade do professor.
@@ -160,6 +183,7 @@ Entregue: `UPSTREAM_ANALYSIS.md`, `ARCHITECTURE_PROPOSAL.md`, `IMPLEMENTATION_RO
 | Acesso ao Hugging Face neste ambiente de nuvem | testes com pesos e qualquer inferência real aqui | **bloqueado** (proxy retorna 403 para `huggingface.co`); liberar o domínio nas configurações de rede do ambiente ou rodar testes com pesos localmente |
 | `download.pytorch.org` | wheels de torch só-CPU neste ambiente | bloqueado; o torch do PyPI funciona, mas é bem maior |
 | Domínio e sistema da primeira integração | F3 (cliente), F4 (dataset pt-BR), F8 | decisão sua |
+| Gate DG-1 (governança de dados) aprovado | qualquer uso de dados reais: shadow real, F4 com dados reais, F8, envio a LLM | a definir antes do fim da F3 |
 | Dados reais rotulados ou rotuláveis | F4, F8 | depende do domínio |
 | Chaves de LLM e orçamento | F5 (testes reais), F8 (rotulagem) | decisão sua |
 | GPU para treino | F8 | Kaggle 2×T4 / Colab / local |
@@ -167,5 +191,6 @@ Entregue: `UPSTREAM_ANALYSIS.md`, `ARCHITECTURE_PROPOSAL.md`, `IMPLEMENTATION_RO
 
 ## 5. Próximo passo
 
-Executar a **F1** (bootstrap). Ela não depende de nenhuma das decisões em aberto, exceto nome e licença — que podem
-ficar provisórios (`laya_platform`, Apache-2.0) e ser trocados antes da primeira release sem custo.
+Executar a **F2** (Decision Core e testes de compatibilidade). Ela não usa dados reais e não depende do gate DG-1;
+os testes com pesos da F2 rodam fora deste ambiente de nuvem (marcador `weights`). O nome `laya_platform` continua
+provisório.

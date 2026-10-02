@@ -30,7 +30,7 @@ porque o upstream deixa claro que é a especialização que entrega acurácia.
 ```
                          ┌──────────────────────────────────────────┐
   Sistemas existentes ──►│            Decision Gateway              │◄── Operadores (dashboard, CLI)
-  Agentes (A2A, MCP)  ──►│  /v1/systemone (upstream, idêntico)      │◄── Clientes MCP (Claude Code, Cursor)
+  Agentes (A2A, MCP)  ──►│  /v1/systemone (contrato do upstream)    │◄── Clientes MCP (Claude Code, Cursor)
   Frameworks (LangGraph, │  /api/v1/decide | route | admin          │
   CrewAI, LlamaIndex) ──►└───────────────┬──────────────────────────┘
                                          │
@@ -119,6 +119,11 @@ Adaptadores: `UpstreamRouterEngine` (`laya.Router`), `AgentEngine` (`laya.load(p
 O payload devolvido é **sempre** o do upstream; a plataforma só acrescenta um bloco `platform` nas respostas de
 `/api/v1/*`.
 
+**Contrato de `/v1/systemone*`.** A compatibilidade prometida é de **contrato wire/API** — schema, campos, tipos,
+valores (com tolerância numérica), status codes e semântica — e não de igualdade binária de headers ou corpo.
+Middleware, serialização e versões de FastAPI/Starlette podem mudar bytes sem mudar o contrato; os testes comparam o
+JSON interpretado (ver `COMPATIBILITY_MATRIX.md` §1).
+
 Configuração padrão recomendada para tráfego brasileiro:
 `Router(default="multilingual", lang_guess=<detector real>, revision via LAYA_REVISION=reviewed, sha256 fixados)`.
 
@@ -205,6 +210,11 @@ OpenAI-compatível. Retentativas com backoff, *circuit breaker*, orçamento por 
 Quando a escalada precisa de uma decisão tipada, o LLM recebe **o mesmo schema** da DecisionSpec via saída
 estruturada, para que o resultado seja comparável com o do Laya.
 
+**Regra de dependência de modelos.** O núcleo (políticas, interfaces, roteamento, testes centrais) depende apenas de
+`provider`, `tier` e `capabilities`. IDs concretos de modelos (`claude-*`, `gpt-*`, `gemini-*`, `deepseek-*` e
+equivalentes) são **referências temporais**: vivem só em configuração e em documentação datada. Um teste de guarda
+no CI (`tests/unit/test_model_id_guard.py`) falha se um desses padrões aparecer em `src/`, `scripts/` ou `tests/`.
+
 ### 6.6 EscalationRouter (System-1 → System-2 → humano)
 
 ```
@@ -287,7 +297,7 @@ mês no PostgreSQL), `review_queue`, `datasets`, `dataset_versions`, `labels`, `
 | modo | nome | comportamento |
 |---|---|---|
 | 0 | offline | avaliação sobre logs exportados; nenhuma chamada em produção |
-| 1 | shadow (**padrão**) | o sistema atual continua decidindo; o Laya decide em paralelo, de forma assíncrona e com timeout, e só registra |
+| 1 | shadow (**padrão**) | o sistema atual continua decidindo; o Laya decide em paralelo, de forma assíncrona e com timeout, e só registra. Com dados reais, só após o gate DG-1 (§6.15) |
 | 2 | advisory | a sugestão aparece para o humano; o humano decide e a escolha é registrada como rótulo |
 | 3 | gated | automação apenas na banda `auto` de uma DecisionSpec aprovada e numa fatia limitada (canário) |
 | 4 | production | automação na DecisionSpec inteira, com amostragem contínua para auditoria |
@@ -311,6 +321,29 @@ mês no PostgreSQL), `review_queue`, `datasets`, `dataset_versions`, `labels`, `
 - Capacidade: em CPU contar com ~0,2–0,5 s por chamada (publicado). Para latência de dezenas de ms é preciso GPU,
   ONNX INT8 ou micro-batching.
 
+### 6.15 Data Governance Gate (DG-1) — requisito bloqueante
+
+O modo shadow não altera a decisão do sistema existente, mas **processa dados reais**. Por isso nenhum dado real
+entra na plataforma — shadow, avaliação offline sobre exportações reais, criação de datasets ou envio a qualquer LLM —
+antes de o gate **DG-1** estar aprovado. Até lá, desenvolvimento e testes usam apenas dados sintéticos ou públicos.
+
+| item | o que precisa estar definido e aprovado |
+|---|---|
+| Classificação de dados | níveis (público, interno, confidencial, pessoal, pessoal sensível) e a classificação de cada fonte e de cada DecisionSpec |
+| PII / LGPD | base legal e finalidade por fonte, minimização, necessidade de RIPD, atendimento a direitos do titular |
+| Retenção | prazos por tipo (metadados de auditoria, estado redigido, rótulos, datasets, relatórios) e o padrão mínimo |
+| Criptografia | TLS em trânsito; criptografia em repouso para banco, backups e artefatos; gestão e rotação das chaves (incluindo a chave do HMAC) |
+| Controle de acesso | papéis com menor privilégio; leitura de auditoria e de datasets separadas da operação; acesso a esses dados também auditado |
+| Audit logs | o que é registrado e o que nunca é; armazenamento append-only; quem pode consultar |
+| Datasets de treino | proveniência, base legal, aprovação antes do uso, versionamento, proibição de dados sensíveis sem aprovação explícita |
+| LLM externo | **proibido por padrão**; liberação explícita por DecisionSpec e por classificação; redação obrigatória; provedor com termos de não retenção e de não treinamento; dados sensíveis só com professor local |
+| Sanitização / redação | regras pt-BR (CPF, CNPJ, RG, e-mail, telefone, cartão, endereço) testadas; redação antes de persistir e antes de qualquer LLM |
+| Exclusão / expurgo | expurgo automático por retenção; atendimento a pedido de exclusão do titular (localização via HMAC do identificador); propagação para datasets derivados e política de re-treino dos especialistas afetados |
+
+Evidência exigida: `docs/DATA_GOVERNANCE.md` aprovado por você (responsável pelo tratamento), configuração versionada
+e testes das regras de redação e expurgo. A partir da F3, o gateway **recusa** iniciar qualquer modo com dados reais
+se a configuração de governança não referenciar uma aprovação DG-1 válida.
+
 ## 7. O ciclo de dados e destilação (a principal adição ao upstream)
 
 O upstream mostra que o checkpoint base fica perto do acaso no typed-decisions (0,36) e que o especializado chega a
@@ -333,7 +366,8 @@ produção (shadow/advisory) ─► audit trail (estado redigido, decisões, res
 
 Cuidados:
 
-- **LGPD e privacidade**: dados reais só vão para um LLM externo depois de redação e com base legal; para dados
+- **LGPD e privacidade**: nenhuma etapa deste ciclo roda com dados reais antes do gate DG-1 (§6.15). Depois dele,
+  dados reais só vão para um LLM externo se a DecisionSpec permitir, após redação e com base legal; para dados
   sensíveis, usar professor local (Ollama/vLLM).
 - **Distribuições do professor precisam ser validadas.** A API Messages da Anthropic oferece saída estruturada e
   processamento em lote (Message Batches, útil para rotular offline), mas não documenta log-probabilidades; em
@@ -392,7 +426,7 @@ reais no git, e qualquer automação que altere um sistema existente sem passar 
 | "Laya System-1: 20–100 ms" | 20–100 ms só em GPU; CPU ~0,2–0,5 s | números publicados pelo upstream; afeta capacidade e custo |
 | Instalar todos os extras de uma vez | extras por aplicação + lockfile | evita conflitos entre CrewAI, LangChain e LlamaIndex |
 | Exemplo 0,95 / 0,75 de thresholds | bandas por DecisionSpec, escolhidas por custo a partir da calibração, só em `answer_confidence` | `confidence` (entropia) não é calibrada; os checkpoints base são super-confiantes |
-| GPT-6, Gemini 3.8, DeepSeek V4 etc. no plano | só configuração, por tier | nomes mudam; IDs da Anthropic confirmados (`claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5`), os demais não verificados nesta auditoria |
+| GPT-6, Gemini 3.8, DeepSeek V4 etc. no plano | IDs são referências datadas, só em configuração; o núcleo depende de provider + tier + capabilities | nomes mudam; nenhuma regra, interface ou teste central pode depender de `claude-*`, `gpt-*`, `gemini-*`, `deepseek-*` ou equivalentes (guarda automática no CI) |
 | Playground do zero | reutilizar primeiro o playground de `examples/server.py` do upstream | já existe (≈3.800 linhas) e mostra distribuição completa e confiança |
 | Fine-tuning por notebooks | módulo `training` testável; notebooks apenas o chamam | o treino do upstream vive dentro de uma célula de notebook e usa APIs internas |
 | "Labeling" genérico | rotulagem com **distribuições** (LLM professor + ouro humano) | o RLCD treina contra distribuições; é onde o System-2 gera mais valor |
