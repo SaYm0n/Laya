@@ -1,0 +1,89 @@
+# Secret scanning, dependency vulnerabilities and license policy. The dependency audit and the
+# license check read public vulnerability/package metadata from PyPI by nature; they are not tests.
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "41 5 * * 1" # Mondays: catch advisories published since the last push
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.22"
+  UV_NO_SYNC: "1"
+
+jobs:
+  secrets:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout of the full history
+      pull-requests: read # gitleaks-action lists the PR's commits to scan exactly that range
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Free for personal accounts. If the repository moves to an organization, add a
+      # GITLEAKS_LICENSE secret (see docs/DEVELOPMENT.md).
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  dependencies:
+    name: dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install pip-audit from locked hashes
+        run: uv sync --locked --only-group audit
+      - name: Runtime dependencies (whole lock, every platform)
+        run: |
+          uv export --locked --no-dev --no-emit-project --format requirements-txt \
+            --output-file "$RUNNER_TEMP/runtime.txt"
+          uv run pip-audit --requirement "$RUNNER_TEMP/runtime.txt" --require-hashes \
+            --disable-pip --progress-spinner off
+      - name: Development tools
+        run: |
+          uv export --locked --only-group dev --no-emit-project --format requirements-txt \
+            --output-file "$RUNNER_TEMP/dev.txt"
+          uv run pip-audit --requirement "$RUNNER_TEMP/dev.txt" --require-hashes \
+            --disable-pip --progress-spinner off
+
+  licenses:
+    name: license policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: false
+      - name: Every locked release against the policy in pyproject.toml
+        run: uv run --no-project python scripts/check_licenses.py

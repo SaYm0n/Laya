@@ -1,0 +1,163 @@
+# Default CI. Runs offline after dependency installation: no Hugging Face, no GPU, no LLM keys,
+# no external services. The `required` job is the single check to mark as required in branch
+# protection for `main` (see docs/DEVELOPMENT.md, "Protected main").
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.22"
+  # Every `uv run` uses the environment the explicit install step created; it never re-syncs
+  # (a re-sync would pull torch and the CUDA stack back in).
+  UV_NO_SYNC: "1"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  lockfile:
+    name: lockfile is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - run: uv lock --check
+
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install development tools only (no project, no laya)
+        run: uv sync --locked --only-group dev
+      - run: uv run ruff check --output-format=github .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    name: types and architecture (mypy, import-linter)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install (light profile, locked hashes, no torch/CUDA)
+        shell: bash
+        run: uv sync --locked $(uv run --no-project python scripts/ci_install_args.py)
+      - run: uv run mypy
+      - run: uv run lint-imports
+
+  tests:
+    name: tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: windows-latest
+            python: "3.12"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install (light profile, locked hashes, no torch/CUDA)
+        shell: bash
+        run: uv sync --locked $(uv run --no-project python scripts/ci_install_args.py)
+      - name: Default suite (unit + compatibility; network/weights/gpu/llm stay gated off)
+        run: uv run pytest
+      - name: CLI smoke test
+        run: uv run laya-platform --version
+
+  build:
+    name: build and package checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: false
+      - run: uv build
+      - name: Project rules for the built artifacts
+        run: uv run --no-project python scripts/check_dist.py dist
+      - name: twine check (twine installed from locked hashes)
+        run: |
+          uv export --locked --only-group package --no-emit-project --format requirements-txt \
+            --output-file "$RUNNER_TEMP/package.txt"
+          uv venv "$RUNNER_TEMP/twine"
+          uv pip install --python "$RUNNER_TEMP/twine" --require-hashes -r "$RUNNER_TEMP/package.txt"
+          "$RUNNER_TEMP/twine/bin/twine" check --strict dist/*
+      - name: Install the wheel alone in a clean environment and run the CLI
+        run: |
+          uv venv "$RUNNER_TEMP/smoke"
+          uv pip install --python "$RUNNER_TEMP/smoke" --no-deps dist/*.whl
+          "$RUNNER_TEMP/smoke/bin/laya-platform" --version | tee "$RUNNER_TEMP/version.txt"
+          grep -q "^laya-platform " "$RUNNER_TEMP/version.txt"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  required:
+    name: required
+    if: always()
+    needs: [lockfile, lint, typecheck, tests, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every required job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = "success" ] || exit 1
+          done

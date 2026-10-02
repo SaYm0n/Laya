@@ -1,0 +1,16 @@
+Laya Decision Platform (provisional name)
+Copyright 2026 SaYm0n and contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product uses Laya (https://github.com/NandhaKishorM/laya), developed by
+Convai Innovations and contributors and licensed under the Apache License,
+Version 2.0. Laya is consumed as an external dependency (PyPI package "laya",
+pinned version); no Laya source code is included in this repository.
+
+This project is independent. It is not affiliated with, sponsored by or
+endorsed by Convai Innovations or the Laya project. "Laya" is used only to
+describe compatibility; no Laya logo or trademark is used.
+
+"Jev" and "TypeSafe" belong to their respective owners. Protocol compatibility
+described in this repository does not imply any affiliation.
