@@ -152,6 +152,7 @@ def train(args: argparse.Namespace) -> int:
         rows += upstream_rows(read_jsonl(args.extra_upstream))
     run = run_finetune(
         recipe,
+        base=args.base,
         base_dir=args.base_dir,
         rows=rows,
         out_dir=args.out,
@@ -326,7 +327,12 @@ def add_commands(commands: Any, db: Any) -> None:
     trainer.add_argument("--spec", required=True)
     trainer.add_argument("--data", required=True, help="train split (JSONL)")
     trainer.add_argument("--base-dir", required=True, help="base checkpoint directory")
-    trainer.add_argument("--base", default="english", help="name of the base checkpoint")
+    trainer.add_argument(
+        "--base",
+        required=True,
+        help="english, multilingual or typed-decisions (fetched when --base-dir is empty), "
+        "or the name of the checkpoint already in --base-dir",
+    )
     trainer.add_argument("--upstream-dir", required=True, help="upstream repository files")
     trainer.add_argument("--fetch-upstream", action="store_true", help="download the recipe")
     trainer.add_argument("--out", required=True, help="output checkpoint directory")

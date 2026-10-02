@@ -14,6 +14,8 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from laya.revisions import PINNED_REVISIONS
+from laya.router import STANDALONE_MODELS
 
 from laya_platform.core import DecisionSpec, load_decision_spec, upstream_compat
 from laya_platform.core.errors import MissingRuntimeError
@@ -26,6 +28,7 @@ from laya_platform.training import (
     build_items,
     candidates,
     gold_for,
+    prepare_base,
     read_jsonl,
     run_finetune,
     specialist_manifest,
@@ -324,8 +327,14 @@ class Recipe:
             backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
         )
         self.AutoTokenizer = SimpleNamespace(from_pretrained=lambda path: f"tokenizer:{path}")
+        self.downloads: list[Any] = []
+
+    def snapshot_download(self, repository: str, revision: str | None, local_dir: str) -> None:
+        self.downloads.append((repository, revision, local_dir))
+        (Path(local_dir) / "model.safetensors").write_bytes(b"base weights")
 
     def prepare_model(self, model_dir: str) -> str:
+        assert (Path(model_dir) / "model.safetensors").is_file()  # else the recipe fetches English
         return model_dir
 
     def build_training_item(self, tokenizer, cfg, state, question, gold_question):  # type: ignore[no-untyped-def]
@@ -364,8 +373,23 @@ def test_run_finetune_drives_the_recipe_and_describes_the_result(tmp_path: Path)
     recipe = Recipe(base)
     out = tmp_path / "out"
     rows = training_rows(SPEC, [{"state": "Cancelo", "expected": VALUES}])
-    run = run_finetune(recipe, base_dir=base, rows=rows, out_dir=out, epochs=1)  # type: ignore[arg-type]
+    run = run_finetune(
+        recipe,  # type: ignore[arg-type]
+        base="multilingual",
+        base_dir=base,
+        rows=rows,
+        out_dir=out,
+        epochs=1,
+    )
     assert (run["items"], run["skipped"], run["device"]) == (2, 1, "cpu")  # urgency is a score
+    repository = STANDALONE_MODELS["multilingual"]  # fetched by name, at the reviewed commit
+    assert recipe.downloads == [(repository, PINNED_REVISIONS[repository], str(base))]
+    assert run["base"] == {
+        "name": "multilingual",
+        "repository": repository,
+        "revision": PINNED_REVISIONS[repository],
+        "sha256": hashlib.sha256(b"base weights").hexdigest(),
+    }
     args, model_dir, items_existed, device = recipe.trained[0]
     assert (args["epochs"], args["no_checkpointing"], model_dir) == (1, False, str(base))
     assert items_existed
@@ -428,6 +452,8 @@ def test_the_train_command_mixes_public_rows_in_and_records_them(
             str(public),
             "--base-dir",
             str(base),
+            "--base",
+            "multilingual",
             "--upstream-dir",
             str(tmp_path),
             "--out",
@@ -450,7 +476,28 @@ def test_the_train_command_mixes_public_rows_in_and_records_them(
 def test_no_item_no_training(tmp_path: Path) -> None:
     (tmp_path / "rl_agent_config.json").write_text("{}")
     with pytest.raises(ValueError, match="no training item"):
-        run_finetune(Recipe(tmp_path), base_dir=tmp_path, rows=[], out_dir=tmp_path / "o")  # type: ignore[arg-type]
+        run_finetune(
+            Recipe(tmp_path),  # type: ignore[arg-type]
+            base="english",
+            base_dir=tmp_path,
+            rows=[],
+            out_dir=tmp_path / "o",
+        )
+
+
+def test_a_base_already_in_place_is_used_and_another_name_needs_one(tmp_path: Path) -> None:
+    recipe = Recipe(tmp_path)
+    (tmp_path / "model.safetensors").write_bytes(b"previous specialist")
+    source = prepare_base(recipe, "t.triage_pt@1", tmp_path)  # type: ignore[arg-type]
+    assert recipe.downloads == []
+    assert source == {
+        "name": "t.triage_pt@1",
+        "sha256": hashlib.sha256(b"previous specialist").hexdigest(),
+    }
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(ValueError, match="not an upstream checkpoint"):
+        prepare_base(recipe, "t.triage_pt@1", empty)  # type: ignore[arg-type]
 
 
 # --------------------------------------------------------------------------- pinned recipe file

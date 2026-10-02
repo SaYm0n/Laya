@@ -401,7 +401,7 @@ plataforma só converte as linhas do dataset nos itens da receita, chama `train(
 
 ```bash
 uv run laya-platform train --spec S.yaml --data splits/train.jsonl --dataset-manifest splits/manifest.json \
-  --base-dir <checkpoint base baixado> --base multilingual \
+  --base multilingual --base-dir models/base-multilingual \
   --upstream-dir upstream/ --fetch-upstream \
   --out models/triage_pt-1 --name support.triage_pt --version 1 --owner "time de ML"
 uv run laya-platform eval --spec S.yaml --data splits/test.jsonl --specialist models/triage_pt-1/specialist.yaml \
@@ -412,6 +412,10 @@ uv run laya-platform specialist shadow --db-url URL --name support.triage_pt --v
 ```
 
 - `--fetch-upstream` baixa o arquivo fixado de `raw.githubusercontent.com`; sem ele, use um clone do upstream.
+- `--base` é obrigatório. Com `english`, `multilingual` ou `typed-decisions` e `--base-dir` vazio, o `train` baixa
+  esse checkpoint do repositório do upstream no commit revisado (`laya.revisions.PINNED_REVISIONS`). A receita,
+  sozinha, baixaria sempre o inglês. Outro nome (por exemplo, um especialista anterior) exige os pesos já em
+  `--base-dir`. O manifesto registra o repositório, a revisão e o sha256 dos pesos de partida (`training.base`).
 - `--extra-upstream public.jsonl` mistura linhas no formato do upstream (o dataset público
   `LocalLLaMA/typed-decisions`, exportado com `datasets.load_dataset(...).to_json(...)`), para não esquecer o
   conhecimento geral. **Antes**, confirme a licença do dataset e registre-a no DG-1 (§8 de `DATA_GOVERNANCE.md`);

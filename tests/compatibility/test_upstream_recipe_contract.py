@@ -12,6 +12,7 @@ import inspect
 from pathlib import Path
 
 import pytest
+from laya.router import STANDALONE_MODELS
 
 from laya_platform.core import upstream_compat
 
@@ -38,3 +39,9 @@ def test_the_recipe_has_the_functions_the_platform_calls(tmp_path: Path) -> None
     # finetune.run_finetune uses the recipe's own imports instead of importing ML runtimes.
     assert hasattr(recipe, "torch")
     assert hasattr(recipe, "AutoTokenizer")
+    # finetune.prepare_base fetches a named base with it, so prepare_model never falls back to
+    # downloading the English checkpoint (its MODEL_ID) for another base.
+    assert {"repo_id", "revision", "local_dir"} <= set(
+        inspect.signature(recipe.snapshot_download).parameters
+    )
+    assert STANDALONE_MODELS["english"] == recipe.MODEL_ID

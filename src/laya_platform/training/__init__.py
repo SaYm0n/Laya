@@ -16,6 +16,7 @@ from laya_platform.training.data import (
 from laya_platform.training.finetune import (
     build_items,
     gold_for,
+    prepare_base,
     run_finetune,
     specialist_manifest,
     training_rows,
@@ -30,6 +31,7 @@ __all__ = [
     "build_items",
     "candidates",
     "gold_for",
+    "prepare_base",
     "read_jsonl",
     "run_finetune",
     "specialist_manifest",

@@ -302,6 +302,8 @@ def test_train_refuses_a_recipe_that_is_not_the_pinned_file(
         str(tmp_path / "train.jsonl"),
         "--base-dir",
         str(tmp_path / "base"),
+        "--base",
+        "english",
         "--upstream-dir",
         str(tmp_path / "upstream"),
         "--out",

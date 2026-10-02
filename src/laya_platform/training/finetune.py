@@ -121,9 +121,38 @@ def pick_device(recipe: ModuleType, requested: str) -> str:
     return "cpu"
 
 
+def prepare_base(recipe: ModuleType, base: str, base_dir: str | os.PathLike[str]) -> dict[str, Any]:
+    """Make sure ``base_dir`` holds the ``base`` checkpoint and describe the weights trained from.
+
+    The recipe's ``prepare_model`` downloads the *English* checkpoint into a directory without
+    weights, whatever base was meant. So an upstream checkpoint name (``english``,
+    ``multilingual``, ``typed-decisions``) is fetched here first, from the upstream's own table at
+    its reviewed commit; any other base must already be in ``base_dir``.
+    """
+    from laya.revisions import PINNED_REVISIONS
+    from laya.router import STANDALONE_MODELS
+
+    weights = Path(base_dir) / "model.safetensors"
+    source: dict[str, Any] = {"name": base}
+    if not weights.is_file():
+        if base not in STANDALONE_MODELS:
+            raise ValueError(
+                f"{base_dir} has no model.safetensors and {base!r} is not an upstream checkpoint "
+                f"({', '.join(STANDALONE_MODELS)}); put the base checkpoint there first"
+            )
+        repository = STANDALONE_MODELS[base]
+        revision = PINNED_REVISIONS.get(repository)
+        recipe.snapshot_download(repository, revision=revision, local_dir=str(base_dir))
+        source |= {"repository": repository, "revision": revision}
+    with weights.open("rb") as file:
+        source["sha256"] = hashlib.file_digest(file, "sha256").hexdigest()
+    return source
+
+
 def run_finetune(
     recipe: ModuleType,
     *,
+    base: str,
     base_dir: str | os.PathLike[str],
     rows: Sequence[Mapping[str, Any]],
     out_dir: str | os.PathLike[str],
@@ -140,7 +169,8 @@ def run_finetune(
     ``recipe.AutoTokenizer``): the platform's code never imports an ML runtime directly.
     """
     torch = recipe.torch
-    model_dir = recipe.prepare_model(str(base_dir))  # downloads only when the directory is empty
+    base_source = prepare_base(recipe, base, base_dir)
+    model_dir = recipe.prepare_model(str(base_dir))  # weights present: only fixes the tokenizer
     cfg = json.loads((Path(model_dir) / "rl_agent_config.json").read_text(encoding="utf-8"))
     # As the recipe's own preprocessing does, from the base checkpoint's config.
     cfg = {**cfg, "max_len": cfg.get("max_len", 1024), "head_max_len": cfg.get("head_max_len", 256)}
@@ -167,6 +197,7 @@ def run_finetune(
         "items": len(items),
         "skipped": skipped,
         "device": chosen,
+        "base": base_source,
         "args": {k: v for k, v in vars(args).items() if k != "output_dir"},
         "recipe": {
             "repository": upstream_compat.UPSTREAM_REPOSITORY,
