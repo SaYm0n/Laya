@@ -1,0 +1,25 @@
+# Synthetic example for Block A (gateway + evaluation). Generic on purpose: no real customer,
+# product or dataset is named, and the platform core knows nothing about this domain.
+id: examples.support_triage
+version: 1
+schema:
+  type: object
+  properties:
+    department:
+      type: string
+      enum: [billing, technical, account]
+      description: "Qual equipe deve tratar este chamado: cobrança, suporte técnico ou cadastro?"
+    urgency:
+      type: integer
+      minimum: 0
+      maximum: 3
+      description: "Quão urgente é o chamado, de 0 (pode esperar) a 3 (serviço parado agora)?"
+    churn_risk:
+      type: boolean
+      description: "O cliente diz que vai cancelar ou trocar de fornecedor?"
+languages: [pt, en]
+engine:
+  checkpoint: multilingual
+# shadow: decided and audited, nothing returned to act on. Switch to advisory per spec with the
+# mode flag, or here. A `policy` block comes from `laya-platform bands` after an evaluation.
+mode: shadow

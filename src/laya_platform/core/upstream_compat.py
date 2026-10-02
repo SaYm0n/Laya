@@ -65,9 +65,14 @@ INTERNAL_APIS: tuple[InternalApi, ...] = (
         "training (F8): the upstream notebook repairs a saved checkpoint's tokenizer config",
     ),
     CHECK_QUESTION,
+    InternalApi(
+        "laya.calibrate",
+        "records_from_labeled",
+        "calibration (F4): labelled forwards -> the records Agent.fit_temperatures fits on",
+    ),
 )
 
-_TORCH_BACKED_MODULES = frozenset({"laya.agent", "laya.common"})
+_TORCH_BACKED_MODULES = frozenset({"laya.agent", "laya.calibrate", "laya.common"})
 
 
 def torch_available() -> bool:

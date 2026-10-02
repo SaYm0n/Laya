@@ -41,6 +41,7 @@ secrets/
 /runs/
 /outputs/
 /calibration/
+/reports/
 *.parquet
 *.records.jsonl
 *.sqlite

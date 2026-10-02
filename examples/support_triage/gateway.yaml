@@ -1,0 +1,13 @@
+# Local gateway settings for the synthetic example. Secrets are never written here:
+#   export LAYA_PLATFORM_HMAC_KEY=...       (at least 32 characters)
+#   laya-platform hash-key --generate       (put only the sha256 below; keep the key elsewhere)
+specs_dir: specs
+database_url: sqlite:///laya_platform.db
+data_classification: synthetic
+api_keys:
+  - name: local-dev
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"  # replace
+    scopes: [decide, route, metrics, admin]
+engine:
+  kind: router
+  router: {}

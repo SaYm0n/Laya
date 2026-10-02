@@ -13,8 +13,11 @@ import pytest
 DIST_INFO = "laya_platform-0.1.0.dev0.dist-info"
 ENTRY_POINTS = "[console_scripts]\nlaya-platform = laya_platform.cli:main\n"
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEPENDENCIES = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
-    "dependencies"
+PROJECT = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+DEPENDENCIES = PROJECT["dependencies"] + [
+    f"{requirement} ; extra == '{name}'"
+    for name, requirements in PROJECT.get("optional-dependencies", {}).items()
+    for requirement in requirements
 ]
 GOOD_METADATA = """Metadata-Version: 2.4
 Name: laya-platform
@@ -74,6 +77,12 @@ def test_the_wheel_must_declare_the_pyproject_dependencies(
     wheel = _wheel(tmp_path / "w.whl")
     assert dist.check_wheel(wheel) == []
     assert dist.check_wheel(wheel, expected=[*DEPENDENCIES, "rich"]) != []
+
+
+def test_an_extra_dependency_must_carry_its_extra_marker(dist: ModuleType, tmp_path: Path) -> None:
+    unmarked = GOOD_METADATA.replace(" ; extra == 'gateway'", "")
+    assert unmarked != GOOD_METADATA
+    assert dist.check_wheel(_wheel(tmp_path / "w.whl", metadata=unmarked)) != []
 
 
 def test_the_upstream_pin_is_required_even_if_pyproject_drops_it(

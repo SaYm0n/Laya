@@ -1,9 +1,9 @@
 """Verify the built wheel and sdist before anyone installs them.
 
 Checks what ``uv build`` cannot know about this project's rules: the metadata declares exactly
-the pyproject dependencies (and so the exact upstream pin), the no-upload classifier, the license
-files, the typing marker and the entry point, and that no tests, secrets, weights or data ended up
-inside an artifact. Standard library only.
+the pyproject dependencies and extras (and so the exact upstream pin), the no-upload classifier,
+the license files, the typing marker and the entry point, and that no tests, secrets, weights or
+data ended up inside an artifact. Standard library only.
 
 Usage::
 
@@ -30,8 +30,14 @@ FORBIDDEN_MEMBER = re.compile(
 
 
 def declared_dependencies(pyproject: Path = PYPROJECT) -> list[str]:
+    """The core dependencies, then each extra's under its ``extra == '<name>'`` marker."""
     project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
-    return list(project["dependencies"])
+    extras = project.get("optional-dependencies", {})
+    return list(project["dependencies"]) + [
+        f"{requirement} ; extra == '{name}'"
+        for name, requirements in extras.items()
+        for requirement in requirements
+    ]
 
 
 def _normalized(requirements: Sequence[str]) -> list[str]:

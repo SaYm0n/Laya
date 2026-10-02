@@ -28,10 +28,12 @@ Three kinds of rule apply, and only these:
 2. **Configuration safety** of the file: YAML 1.2 booleans (``no`` stays the string "no", e.g.
    the Norwegian language code), duplicate keys refused in YAML and JSON, no ``NaN``/``Infinity``,
    no Python object tags.
-3. **The platform's own envelope** (this phase's scope): ``id``, ``version``, ``languages`` and
-   ``engine.checkpoint`` (a name the upstream Router accepts); keys of later phases -- confidence
-   bands and ``calibration_ref`` (F4/F6), risk (F6), integration mode (F3), specialists (F7) -- are
-   refused with the phase instead of being accepted and ignored.
+3. **The platform's own envelope**: ``id``, ``version``, ``languages``, ``engine.checkpoint`` (a
+   name the upstream Router accepts), the integration ``mode`` (``offline``, ``shadow``,
+   ``advisory``) and the confidence ``policy`` (bands over ``answer_confidence`` plus the
+   ``calibration_ref`` of the evaluation report behind them; reported, never acted on). Keys of
+   later phases -- ``risk`` and ``policy.never_auto_if`` (F6), modes ``gated`` and ``production``
+   (Block B), specialists (F7) -- are refused with the phase instead of being accepted and ignored.
 
 Recommended, never enforced: a ``description`` on every schema property (docs/UPSTREAM_ANALYSIS.md
 §3.9 shows the generic instruction is a poor question).
@@ -45,7 +47,7 @@ import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 import yaml
 from laya.router import normalise_name
@@ -71,11 +73,19 @@ SUPPORTED_SUFFIXES = (".yaml", ".yml", ".json")
 #: Keys of the documented DecisionSpec format (ARCHITECTURE_PROPOSAL.md §6.2) that belong to later
 #: phases. Refused with the reason, so a spec written ahead of time fails loudly.
 NOT_YET_SUPPORTED = {
-    "policy": "confidence bands belong to the DecisionPolicy (F6), derived from calibration (F4)",
-    "calibration_ref": "calibration references arrive with calibration (F4)",
-    "risk": "risk levels are enforced by the DecisionPolicy (F6)",
-    "mode": "integration modes (offline/shadow/advisory/gated/production) arrive in F3",
+    "risk": "risk levels are enforced by the DecisionPolicy (Block B, F6)",
 }
+POLICY_NOT_YET_SUPPORTED = {
+    "never_auto_if": "blocking rules are enforced by the DecisionPolicy (Block B, F6)",
+}
+#: Integration modes (ARCHITECTURE_PROPOSAL.md §6.13). Only the ones that never act are available:
+#: offline (evaluation only), shadow (the default) and advisory.
+MODES = ("offline", "shadow", "advisory")
+LATER_MODES = {
+    "gated": "automation on the calibrated band needs the DecisionPolicy (Block B, F6)",
+    "production": "production automation comes after gated (Block B onwards)",
+}
+OUTCOMES = ("auto", "review", "escalate")
 ENGINE_NOT_YET_SUPPORTED = {
     "specialist": "specialists are registered and selected from F7 (SpecialistRegistry)",
     "fallback_checkpoint": "a fallback exists only once specialists do (F7); use 'checkpoint'",
@@ -241,6 +251,52 @@ class EngineSettings(_Frozen):
         return None if value is None else str(normalise_name(value))
 
 
+class Band(_Frozen):
+    """One confidence band: answers with ``answer_confidence >= min`` get ``outcome``."""
+
+    min: Annotated[float, Field(ge=0.0, le=1.0, strict=True)] | None = None
+    outcome: Literal["auto", "review", "escalate"]
+
+
+class Policy(_Frozen):
+    """Bands over ``answer_confidence`` and the evaluation report that justified them.
+
+    Until the DecisionPolicy (Block B) nothing acts on them: the gateway reports the band each
+    answer falls in, in shadow and advisory mode alike.
+    """
+
+    calibration_ref: Annotated[StrictStr, StringConstraints(min_length=1, strip_whitespace=True)]
+    bands: Annotated[tuple[Band, ...], Field(min_length=1)]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _not_yet(cls, data: Any) -> Any:
+        _refuse_not_yet(data, POLICY_NOT_YET_SUPPORTED, "policy.")
+        return data
+
+    @model_validator(mode="after")
+    def _ordered_bands(self) -> Self:
+        *ranked, last = self.bands
+        if last.min is not None:
+            raise ValueError("the last band is the catch-all: it must not have a 'min'")
+        if last.outcome == "auto":
+            raise ValueError("the catch-all band cannot be 'auto'")
+        mins = [band.min for band in ranked if band.min is not None]
+        if len(mins) != len(ranked):
+            raise ValueError("every band but the last needs a 'min'")
+        if mins != sorted(mins, reverse=True) or len(set(mins)) != len(mins):
+            raise ValueError("band minimums must be strictly decreasing")
+        return self
+
+    def outcome(self, answer_confidence: float | None) -> str:
+        """The band an answer falls in; no usable ``answer_confidence`` -> the catch-all."""
+        if answer_confidence is not None:
+            for band in self.bands:
+                if band.min is not None and answer_confidence >= band.min:
+                    return band.outcome
+        return self.bands[-1].outcome
+
+
 class DecisionSpec(_Frozen):
     id: Annotated[StrictStr, StringConstraints(pattern=ID_PATTERN, max_length=128)]
     version: Annotated[StrictInt, Field(ge=1)]
@@ -248,11 +304,17 @@ class DecisionSpec(_Frozen):
     questions: dict[Any, Any] | None = None
     languages: Annotated[tuple[LanguageCode, ...], Field(min_length=1)]
     engine: EngineSettings = Field(default_factory=EngineSettings)
+    mode: Literal["offline", "shadow", "advisory"] = "shadow"
+    policy: Policy | None = None
 
     @model_validator(mode="before")
     @classmethod
     def _not_yet(cls, data: Any) -> Any:
         _refuse_not_yet(data, NOT_YET_SUPPORTED, "")
+        if isinstance(data, Mapping) and data.get("mode") in LATER_MODES:
+            raise ValueError(
+                f"mode {data['mode']!r} is not supported yet: {LATER_MODES[data['mode']]}"
+            )
         return data
 
     @field_validator("questions")

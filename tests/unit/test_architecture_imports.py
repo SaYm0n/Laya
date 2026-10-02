@@ -130,6 +130,9 @@ def test_the_adapter_exists_and_is_the_only_exception() -> None:
         "laya_platform.core",
         "laya_platform.core.adapters",
         "laya_platform.core.upstream_compat",
+        "laya_platform.evaluation",
+        "laya_platform.gateway",  # the settings; the app itself needs the gateway extra
+        "laya_platform.client",
     ],
 )
 def test_importing_the_core_pulls_no_heavy_runtime(module: str) -> None:

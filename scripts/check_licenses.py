@@ -214,6 +214,8 @@ def locked_releases(lock: Mapping[str, Any]) -> list[tuple[str, str, str]]:
         raise ValueError("uv.lock has no editable/virtual root package")
     runtime: set[str] = set()
     stack = [d["name"] for d in root.get("dependencies", [])]
+    for extra in root.get("optional-dependencies", {}).values():  # e.g. the gateway's: deployed
+        stack.extend(d["name"] for d in extra)
     while stack:
         name = stack.pop()
         if name not in runtime:

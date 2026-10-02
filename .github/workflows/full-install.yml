@@ -50,7 +50,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
           python-version: "3.12"
           enable-cache: false
-      - run: uv sync --locked
+      - run: uv sync --locked --all-extras
       - name: torch and laya's heavy modules import on CPU (no weights are loaded)
         run: >-
           uv run python -c "import torch, laya; from laya import Agent;

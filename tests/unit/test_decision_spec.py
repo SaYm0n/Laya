@@ -4,8 +4,9 @@ What a schema or a question may contain is the upstream's decision, tested in
 tests/compatibility/test_schema_contract.py (the spec accepts exactly what the upstream accepts).
 This module covers the two other kinds of rule, and only these:
 
-* the platform's own envelope, as scoped for F2: ``id``, ``version``, ``languages``,
-  ``engine.checkpoint``, exactly one of ``schema``/``questions``, keys of later phases refused;
+* the platform's own envelope: ``id``, ``version``, ``languages``, ``engine.checkpoint``,
+  exactly one of ``schema``/``questions``, the integration ``mode`` and the confidence ``policy``
+  (Block A), keys of later phases refused;
 * configuration safety of the file: YAML 1.2 booleans, duplicate keys, NaN, Python tags.
 """
 
@@ -126,14 +127,84 @@ def test_unknown_keys_are_refused(unknown: str) -> None:
     assert f"{unknown}: Extra inputs are not permitted" in _error(_spec(**{unknown: "x"}))
 
 
+def test_keys_of_later_phases_name_their_phase() -> None:
+    message = _error(_spec(risk="high"))
+    assert "'risk' is not supported yet" in message
+    assert "F6" in message
+    policy = {"calibration_ref": "eval-1", "bands": [{"outcome": "review"}], "never_auto_if": []}
+    message = _error(_spec(policy=policy))
+    assert "'policy.never_auto_if' is not supported yet" in message
+    assert "F6" in message
+
+
+@pytest.mark.parametrize("mode", ["gated", "production"])
+def test_modes_that_act_are_refused_with_their_block(mode: str) -> None:
+    message = _error(_spec(mode=mode))
+    assert f"mode {mode!r} is not supported yet" in message
+    assert "Block B" in message
+
+
+def test_mode_defaults_to_shadow_and_takes_the_modes_that_never_act() -> None:
+    assert DecisionSpec.model_validate(_spec()).mode == "shadow"
+    for mode in ("offline", "shadow", "advisory"):
+        assert DecisionSpec.model_validate(_spec(mode=mode)).mode == mode
+    assert "mode" in _error(_spec(mode="auto"))
+
+
+def _policy(*bands: dict[str, Any]) -> dict[str, Any]:
+    return {"calibration_ref": "eval-0123456789ab", "bands": list(bands)}
+
+
+def test_policy_bands_map_answer_confidence_to_an_outcome() -> None:
+    policy = DecisionSpec.model_validate(
+        _spec(
+            policy=_policy(
+                {"min": 0.9, "outcome": "auto"},
+                {"min": 0.6, "outcome": "review"},
+                {"outcome": "escalate"},
+            )
+        )
+    ).policy
+    assert policy is not None
+    assert policy.calibration_ref == "eval-0123456789ab"
+    assert [policy.outcome(c) for c in (0.95, 0.9, 0.7, 0.59, 0.0)] == [
+        "auto",
+        "auto",
+        "review",
+        "escalate",
+        "escalate",
+    ]
+    assert policy.outcome(None) == "escalate"  # no answer_confidence: never the confident band
+
+
 @pytest.mark.parametrize(
-    ("key", "phase"),
-    [("policy", "F6"), ("calibration_ref", "F4"), ("risk", "F6"), ("mode", "F3")],
+    ("bands", "message"),
+    [
+        ([{"min": 0.9, "outcome": "auto"}], "the last band is the catch-all"),
+        ([{"outcome": "auto"}], "the catch-all band cannot be 'auto'"),
+        ([{"outcome": "review"}, {"outcome": "escalate"}], "every band but the last needs a 'min'"),
+        (
+            [
+                {"min": 0.6, "outcome": "review"},
+                {"min": 0.9, "outcome": "auto"},
+                {"outcome": "escalate"},
+            ],
+            "strictly decreasing",
+        ),
+        ([{"min": 1.5, "outcome": "auto"}, {"outcome": "review"}], "less than or equal to 1"),
+        ([{"min": "0.9", "outcome": "auto"}, {"outcome": "review"}], "valid number"),
+        ([], "at least 1 item"),
+    ],
 )
-def test_keys_of_later_phases_name_their_phase(key: str, phase: str) -> None:
-    message = _error(_spec(**{key: "x"}))
-    assert f"'{key}' is not supported yet" in message
-    assert phase in message
+def test_invalid_bands_are_refused(bands: list[dict[str, Any]], message: str) -> None:
+    assert message in _error(_spec(policy=_policy(*bands)))
+
+
+def test_a_policy_names_the_report_behind_it() -> None:
+    assert "calibration_ref" in _error(_spec(policy={"bands": [{"outcome": "review"}]}))
+    assert "calibration_ref" in _error(
+        _spec(policy=_policy({"outcome": "review"}) | {"calibration_ref": " "})
+    )
 
 
 @pytest.mark.parametrize(
