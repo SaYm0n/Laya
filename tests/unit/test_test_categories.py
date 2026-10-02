@@ -6,6 +6,7 @@ is exercised exactly as CI uses it.
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -59,7 +60,12 @@ def test_default_run_skips_every_gated_category(session: pytest.Pytester) -> Non
 def test_each_gate_is_opened_only_by_its_own_flag(session: pytest.Pytester, category: str) -> None:
     session.makepyfile(**{"unit/test_gated": GATED_FILE})
     result = _run(session, f"--run-{category}")
-    result.assert_outcomes(passed=2, skipped=3)
+    # weights and gpu also need torch; without it the opened test still skips, with that reason.
+    needs_missing_torch = (
+        category in {"weights", "gpu"} and importlib.util.find_spec("torch") is None
+    )
+    opened = 0 if needs_missing_torch else 1
+    result.assert_outcomes(passed=1 + opened, skipped=4 - opened)
 
 
 def test_base_category_comes_from_the_directory(session: pytest.Pytester) -> None:
@@ -140,3 +146,38 @@ def test_case(name):
         }
     )
     _run(session).assert_outcomes(passed=4)
+
+
+TORCH_FILE = """
+import pytest
+
+@pytest.mark.torch
+def test_needs_torch():
+    import torch
+"""
+
+
+def test_torch_marked_tests_follow_the_installed_runtime(session: pytest.Pytester) -> None:
+    session.makepyfile(**{"unit/test_runtime": TORCH_FILE})
+    result = _run(session)
+    if importlib.util.find_spec("torch") is None:
+        result.assert_outcomes(skipped=1)
+        result.stdout.fnmatch_lines(["*needs torch: not installed (light profile)*"])
+    else:
+        result.assert_outcomes(passed=1)
+
+
+def test_torch_marked_tests_run_when_torch_is_importable(session: pytest.Pytester) -> None:
+    # A stand-in package next to the conftest is importable in the subprocess, as torch would be.
+    session.makepyfile(**{"torch/__init__": "", "unit/test_runtime": TORCH_FILE})
+    _run(session).assert_outcomes(passed=1)
+
+
+def test_enabled_weights_tests_still_need_torch(session: pytest.Pytester) -> None:
+    session.makepyfile(**{"unit/test_gated": GATED_FILE})
+    result = _run(session, "--run-weights")
+    if importlib.util.find_spec("torch") is None:
+        result.assert_outcomes(passed=1, skipped=4)
+        result.stdout.fnmatch_lines(["*needs torch: not installed (light profile)*"])
+    else:
+        result.assert_outcomes(passed=2, skipped=3)

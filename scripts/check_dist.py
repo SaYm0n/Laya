@@ -1,8 +1,9 @@
 """Verify the built wheel and sdist before anyone installs them.
 
-Checks what ``uv build`` cannot know about this project's rules: the exact upstream pin in the
-metadata, the no-upload classifier, the license files, the typing marker and the entry point,
-and that no tests, secrets, weights or data ended up inside an artifact. Standard library only.
+Checks what ``uv build`` cannot know about this project's rules: the metadata declares exactly
+the pyproject dependencies (and so the exact upstream pin), the no-upload classifier, the license
+files, the typing marker and the entry point, and that no tests, secrets, weights or data ended up
+inside an artifact. Standard library only.
 
 Usage::
 
@@ -14,18 +15,32 @@ from __future__ import annotations
 import argparse
 import re
 import tarfile
+import tomllib
 import zipfile
+from collections.abc import Sequence
 from email.parser import Parser
 from pathlib import Path
 
 PACKAGE = "laya_platform"
-REQUIRED_DEPENDENCY = "laya==0.3.23"
+UPSTREAM_PIN = "laya==0.3.23"
+PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 FORBIDDEN_MEMBER = re.compile(
     r"(^|/)\.env($|\.)|(^|/)tests?/|\.(safetensors|onnx|pt|pth|ckpt|gguf|parquet|sqlite3?|db|pem|key)$"
 )
 
 
-def check_wheel(path: Path) -> list[str]:
+def declared_dependencies(pyproject: Path = PYPROJECT) -> list[str]:
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+    return list(project["dependencies"])
+
+
+def _normalized(requirements: Sequence[str]) -> list[str]:
+    return sorted(re.sub(r"\s+", "", requirement).lower() for requirement in requirements)
+
+
+def check_wheel(path: Path, expected: Sequence[str] | None = None) -> list[str]:
+    """Problems with one wheel; ``expected`` defaults to the pyproject dependencies."""
+    expected = declared_dependencies() if expected is None else expected
     problems: list[str] = []
     with zipfile.ZipFile(path) as wheel:
         names = wheel.namelist()
@@ -37,8 +52,10 @@ def check_wheel(path: Path) -> list[str]:
         metadata = Parser().parsestr(wheel.read(f"{dist_info}/METADATA").decode("utf-8"))
         entry_points = wheel.read(f"{dist_info}/entry_points.txt").decode("utf-8")
     requires = metadata.get_all("Requires-Dist") or []
-    if requires != [REQUIRED_DEPENDENCY]:
-        problems.append(f"Requires-Dist must be exactly [{REQUIRED_DEPENDENCY!r}], got {requires}")
+    if _normalized(requires) != _normalized(expected):
+        problems.append(f"Requires-Dist must be exactly {list(expected)}, got {requires}")
+    if _normalized([UPSTREAM_PIN])[0] not in _normalized(requires):
+        problems.append(f"Requires-Dist must pin {UPSTREAM_PIN}")
     if "Private :: Do Not Upload" not in (metadata.get_all("Classifier") or []):
         problems.append("missing the 'Private :: Do Not Upload' classifier")
     if metadata.get("License-Expression") != "Apache-2.0":

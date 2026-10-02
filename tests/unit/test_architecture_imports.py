@@ -9,6 +9,8 @@ external package, so this test does.
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -36,10 +38,28 @@ def _is_internal_module(name: str) -> bool:
     )
 
 
+_DYNAMIC_IMPORTERS = frozenset({"import_module", "__import__"})
+
+
 def internal_imports(source: str) -> list[str]:
-    """Every import of a laya internal module or private name in ``source``."""
+    """Every import of a laya internal module or private name in ``source``.
+
+    Dynamic imports with a literal name (``importlib.import_module("laya.common")``,
+    ``__import__("laya.agent")``) count too, so the rule cannot be side-stepped by a string.
+    """
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call) and node.args:
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            target = node.args[0]
+            if (
+                name in _DYNAMIC_IMPORTERS
+                and isinstance(target, ast.Constant)
+                and isinstance(target.value, str)
+                and _is_internal_module(target.value)
+            ):
+                found.append(target.value)
         if isinstance(node, ast.Import):
             found.extend(alias.name for alias in node.names if _is_internal_module(alias.name))
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
@@ -63,6 +83,9 @@ def internal_imports(source: str) -> list[str]:
         "from laya import _upstream_private",
         "import laya._compile",
         "from laya.mcp import _internal",
+        "importlib.import_module('laya.common')",
+        "import_module('laya.agent')",
+        "__import__('laya.calibrate')",
     ],
 )
 def test_checker_flags_internal_imports(source: str) -> None:
@@ -76,7 +99,10 @@ def test_checker_flags_internal_imports(source: str) -> None:
         "from laya import Router, decide",
         "from laya.structured import SchemaError",
         "from laya.serve import create_app",
+        "from laya.onnx_agent import ONNXAgent",
         "from laya_platform import cli",
+        "importlib.import_module(api.module)",
+        "importlib.import_module('laya.structured')",
     ],
 )
 def test_checker_accepts_public_imports(source: str) -> None:
@@ -90,3 +116,31 @@ def test_only_the_adapter_imports_laya_internals() -> None:
         if path != ADAPTER and (found := internal_imports(path.read_text(encoding="utf-8")))
     }
     assert not offenders
+
+
+def test_the_adapter_exists_and_is_the_only_exception() -> None:
+    assert ADAPTER.is_file()
+    assert "laya.agent" in ADAPTER.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "laya_platform",
+        "laya_platform.core",
+        "laya_platform.core.adapters",
+        "laya_platform.core.upstream_compat",
+    ],
+)
+def test_importing_the_core_pulls_no_heavy_runtime(module: str) -> None:
+    # A fresh interpreter, so modules imported by other tests cannot hide an import.
+    heavy = ("torch", "onnxruntime", "transformers", "fastapi", "starlette", "uvicorn", "mcp")
+    code = (
+        f"import sys, {module}\n"
+        f"loaded = [m for m in {heavy!r} if m in sys.modules]\n"
+        "print(','.join(loaded))"
+    )
+    result = subprocess.run(  # noqa: S603 -- fixed interpreter and code
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=120
+    )
+    assert result.stdout.strip() == ""

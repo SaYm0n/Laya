@@ -12,6 +12,11 @@ on:
       - pyproject.toml
       - uv.lock
       - .github/workflows/full-install.yml
+      # Contract tests marked `torch` (signatures through inspect, the upstream question validator,
+      # the confidence formulas) only run where torch is installed, i.e. here.
+      - src/laya_platform/core/**
+      - tests/compatibility/**
+      - tests/conftest.py
 
 permissions:
   contents: read

@@ -186,7 +186,8 @@ ajustadas**. Temperaturas carregadas são limitadas a `[0,5; 5,0]`.
   (→ `score`), `Optional[...]`. Strings livres, arrays, objetos aninhados e `$ref` são rejeitados.
 - Limites: 32 propriedades, 32 opções, 10 níveis.
 - **Sem `description`, as instruções geradas são genéricas** (ex.: `"What is `dept`?"`) — confirmado no teste
-  empírico. Em produção, toda propriedade precisa de `description`.
+  empírico. Recomendação de qualidade (não é exigência do upstream nem da `DecisionSpec`): em produção, dar uma
+  `description` a toda propriedade.
 
 ### 3.10 Avaliação (`laya-evals`)
 - Dataset JSONL (`state`, `questions`, `expected`, `tags`, `language`, `model`).
