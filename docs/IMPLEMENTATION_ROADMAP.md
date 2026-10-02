@@ -56,6 +56,8 @@ anteriores) e o que sobra como código próprio. Nenhuma fase cria o que o upstr
 | F19 Segurança final | dependências, autenticação, autorização, segredos, isolamento, LGPD | pip-audit, gitleaks, licenças (F1) | auditoria final | D |
 | F20 Release Candidate | revisão final e primeira versão candidata | — | — | D |
 
+Valor por cenário, lacunas atuais e próximos ganhos priorizados: `VALUE_AND_GAPS.md` (atualizado a cada bloco).
+
 Ordem antes da produção: **F9 (guardrails), F16 (deploy) e F19 (segurança) antes de qualquer `gated` ou produção
 com dados reais** (F17). F13, F17 e F18 são quase só configuração e processo: itens de checklist do Bloco D.
 

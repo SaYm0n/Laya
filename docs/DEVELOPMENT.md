@@ -23,6 +23,8 @@ implementar → testes focados → validação final única → push → Draft P
   mudança de Laya/checkpoint ou releases relevantes.
 - Blocos funcionais grandes e coerentes (roadmap em 4 blocos: A = F3+F4, B = F5+F6, C = F7+F8, D = F9–F20
   selecionadas; `IMPLEMENTATION_ROADMAP.md`), sem criar etapas novas sem necessidade técnica.
+- **A cada bloco implementado**, atualizar `docs/VALUE_AND_GAPS.md` no mesmo PR: status das dores e dos cenários,
+  lacunas resolvidas ou novas, próximos ganhos e uma linha no histórico.
 
 ## 1. Pré-requisitos
 
