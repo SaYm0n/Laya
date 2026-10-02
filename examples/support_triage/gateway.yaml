@@ -1,0 +1,26 @@
+# Local gateway settings for the synthetic example. Secrets are never written here:
+#   export LAYA_PLATFORM_HMAC_KEY=...       (at least 32 characters)
+#   laya-platform hash-key --generate       (put only the sha256 below; keep the key elsewhere)
+specs_dir: specs
+database_url: sqlite:///laya_platform.db
+data_classification: synthetic
+api_keys:
+  - name: local-dev
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"  # replace
+    scopes: [decide, route, metrics, admin, review]
+engine:
+  kind: router
+  router: {}
+# System-2 (Block B), off by default. Model IDs are dated references (2026-10-02): check the
+# provider's current list before using one. External providers need allow_external (and, for
+# real data, an approved DG-1).
+# llm:
+#   allow_external: false
+#   daily_budget: 5.0
+#   providers:
+#     local: {kind: openai_compatible, base_url: "http://localhost:11434/v1", local: true}
+#     claude: {kind: anthropic, api_key_env: ANTHROPIC_API_KEY, fallbacks: default}
+#   tiers:
+#     fast: {provider: local, model: "<a local model>"}
+#     deep: {provider: claude, model: claude-sonnet-5-5, input_cost_per_mtok: 2,
+#            output_cost_per_mtok: 10, effort: low}

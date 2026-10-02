@@ -1,7 +1,8 @@
 # Roadmap de implementação
 
-> Criado na Fase 0 e atualizado nas Fases 1 e 2. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
-> e produza os insumos da seguinte. A seção 3 mapeia a numeração original para a nova.
+> Criado na Fase 0 e atualizado nas Fases 1 e 2 e no Bloco A. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
+> e produza os insumos da seguinte. A seção 3 mapeia a numeração original para a nova. Desde a F2 as fases são
+> entregues em **4 blocos** (modo LEAN, `DEVELOPMENT.md` §0), sem criar etapas novas.
 
 ## 1. Marcos
 
@@ -13,6 +14,52 @@
 | **M4 — Primeiro especialista** | F8 | treinar, calibrar, avaliar e promover um especialista próprio a partir dos dados coletados |
 | **M5 — Ecossistema de agentes** | F13 | guardrails, MCP admin, RAG, A2A e frameworks integrados |
 | **M6 — Release candidate** | F20 | operação em produção, auditada e com rollback |
+
+### 1.1 Blocos de entrega (modo LEAN)
+
+| bloco | fases | situação |
+|---|---|---|
+| **A** | F3 + F4 — gateway, auditoria, shadow/advisory, avaliação e calibração | implementado (dados sintéticos); em revisão |
+| **B** | F5 + F6 — LLM Gateway, System-1/System-2 e política de confiança | implementado (dados sintéticos); aguarda o merge do A |
+| **C** | F7 + F8 — Specialist Registry, dados e treino | depois do B e do DG-1 |
+| **D** | F9–F20 selecionadas — guardrails, MCP, RAG, observabilidade, Docker/implantação, benchmarks, segurança, RC | por necessidade |
+
+Cada bloco segue o fluxo implementar → testes focados → validação única → Draft PR → CI → revisão → merge, e
+reaproveita o upstream e bibliotecas maduras antes de escrever código próprio.
+
+### 1.2 Visão única
+
+O objetivo de cada fase, o que já existe para reaproveitar (upstream `laya==0.3.23`, bibliotecas maduras ou blocos
+anteriores) e o que sobra como código próprio. Nenhuma fase cria o que o upstream já oferece.
+
+| fase | objetivo | reaproveita | código próprio (gap real) | bloco |
+|---|---|---|---|---|
+| F0 Auditoria | entender o upstream: arquitetura, limites, contratos, licença, riscos | — | — | ✅ |
+| F1 Fundação | projeto, dependências, licença, CI, testes, segurança, `main` protegida | uv, ruff, mypy, import-linter, gitleaks, pip-audit | scripts de verificação | ✅ |
+| F2 Decision Core | `DecisionEngine`, adaptadores, `DecisionSpec`, contratos do upstream | `laya.Router`, `laya.structured`, `laya.confidence`, `laya.serve` | protocolo, adaptadores finos, envelope do spec | ✅ |
+| F3 Gateway + Shadow | entrada operacional; decidir em paralelo sem afetar o sistema real; registrar tudo | app HTTP do upstream montado sem alteração; SQLAlchemy/Alembic; Prometheus | `/api/v1/*`, auditoria com HMAC, modos, flags | A |
+| F4 Avaliação + Calibração | medir (P/R/F1, ECE, Brier, abstenção, latência) e calibrar antes de automatizar | `laya.evals`, `fit_temperatures`/`records_from_labeled` | métricas extras, relatório identificado, bandas por custo | A |
+| F5 LLM Gateway | uma abstração para GPT, Claude, Gemini, DeepSeek, OpenRouter, Ollama, vLLM | SDKs oficiais `anthropic` e `openai` (este com `base_url` para todos os compatíveis), com o retry/backoff deles | tiers, privacidade, orçamento, circuit breaker, validação da saída | B |
+| F6 System-1/System-2 | Laya decide quando confiante; LLM quando exige raciocínio; humano quando risco/incerteza | gate de abstenção, `answer_confidence`, `usage`/`routing` do upstream | `DecisionPolicy`, modo `gated` com canário, fila de revisão humana | B |
+| F7 Specialist Registry | vários especialistas por domínio/versão/idioma, com promoção, rollback e histórico | `laya.Router.attach`, `laya.revisions` | registro, estados de promoção, ponteiro de rollback | C |
+| F8 Dados + Treino | dados e feedback → datasets → treino/calibração → comparar → promover só o melhor | notebook RLCD e `laya.calibrate` do upstream; fila de revisão (F6) como fonte de rótulos | pipeline de dados, splits, treino testável | C (**marco central**) |
+| F9 Guardrails | proteger entrada, decisão, ação e saída (PII/LGPD, limites, regras, revisão humana) | limites do `laya.serve` (já aplicados); `never_auto_if`/`risk` (F6) | detectores de PII, catálogo de ações | D |
+| F10 MCP | integrar a plataforma a agentes | servidor MCP do upstream (8 ferramentas) | só ferramentas administrativas | D |
+| F11 A2A | comunicação estruturada entre agentes, com permissões | — | só com caso de uso concreto | D (opcional) |
+| F12 RAG | conhecimento externo sem retreinar | — | só com caso de uso concreto | D (opcional) |
+| F13 Ecossistema | LangChain, LangGraph, CrewAI, LlamaIndex onde trouxerem benefício | `laya.integrations` (LangChain/LangGraph, LlamaIndex, CrewAI) | documentação e exemplos | D |
+| F14 Observabilidade | métricas, logs, tracing, custo, versões | Prometheus e auditoria (A), custo/tokens de LLM (B) | tracing/logs com bibliotecas prontas | D |
+| F15 Dashboard / Playground | testar decisões, modelos, confiança, métricas | — | interface | D |
+| F16 Deploy / Docker | CPU/GPU, Docker, configuração por ambiente | — | imagens, compose com PostgreSQL | D |
+| F17 Produção real | shadow → advisory → gated → produção, com flags, kill switch e rollback | modos, flags e kill switch (A), `gated` (B) | processo de rollout; modo `production` | D |
+| F18 Benchmarks | comparar versões, especialistas e checkpoints | `laya.evals` + `laya-platform eval` | comparação de relatórios | D |
+| F19 Segurança final | dependências, autenticação, autorização, segredos, isolamento, LGPD | pip-audit, gitleaks, licenças (F1) | auditoria final | D |
+| F20 Release Candidate | revisão final e primeira versão candidata | — | — | D |
+
+Valor por cenário, lacunas atuais e próximos ganhos priorizados: `VALUE_AND_GAPS.md` (atualizado a cada bloco).
+
+Ordem antes da produção: **F9 (guardrails), F16 (deploy) e F19 (segurança) antes de qualquer `gated` ou produção
+com dados reais** (F17). F13, F17 e F18 são quase só configuração e processo: itens de checklist do Bloco D.
 
 ## 2. Fases
 
@@ -68,7 +115,7 @@ Entregue (detalhes em `DEVELOPMENT.md` §5 e `COMPATIBILITY_MATRIX.md` §11):
   ambiente de nuvem (Hugging Face bloqueado): precisam de uma execução local para gravar o baseline dos golden
   tests.
 
-### F3 — Gateway, auditoria e modo shadow  *(M1)*
+### F3 — Gateway, auditoria e modo shadow  *(M1)* — Bloco A ✅
 - FastAPI montando `laya.serve.create_app(router)` para `/v1/systemone*`, com **contrato wire/API compatível** com o
   upstream (schema, campos, valores, status codes e semântica validados sobre o JSON interpretado; sem igualdade binária).
 - `/health`, `/ready`, `/metrics`, `/api/v1/decide`, `/api/v1/route` (rota ainda só System-1), autenticação por chave
@@ -81,6 +128,13 @@ Entregue (detalhes em `DEVELOPMENT.md` §5 e `COMPATIBILITY_MATRIX.md` §11):
   uma aprovação DG-1 válida.
 - **Saída:** um sistema real pode chamar a plataforma em shadow sem nenhum efeito colateral; os registros de
   auditoria são suficientes para reconstruir a comparação.
+- **Entregue no Bloco A** (`DEVELOPMENT.md` §5.4): app do upstream montado sem alteração; `/ready`, `/metrics`,
+  `/api/v1/decide`, `/api/v1/route`; chaves por SHA-256 com escopos; limites do `laya.serve`; auditoria com HMAC
+  da entrada (nunca o texto) em SQLite via SQLAlchemy 2 + Alembic (pronto para PostgreSQL); modos offline/shadow/
+  advisory, flags e kill switch; recusa de dados reais sem DG-1; cliente com `shadow()` não bloqueante.
+  **Ajustes de escopo:** micro-batching próprio não foi feito (o `/v1/systemone/batch` do upstream já está
+  montado); o *outbox* virou uma fila limitada em background no cliente; `docker-compose` com PostgreSQL ficou para
+  o Bloco D (F16).
 
 ### Gate DG-1 — Data Governance Gate  *(bloqueante antes de qualquer dado real)*
 Não é uma fase de implementação extensa; é um portão. Antes de shadow com dados reais, avaliação sobre exportações
@@ -90,7 +144,7 @@ ou proibição de envio a LLMs externos (proibido por padrão); sanitização/re
 Detalhes em `ARCHITECTURE_PROPOSAL.md` §6.15. Evidência: `docs/DATA_GOVERNANCE.md` aprovado, configuração
 versionada e testes de redação e expurgo.
 
-### F4 — Avaliação e calibração  *(M2)*
+### F4 — Avaliação e calibração  *(M2)* — Bloco A ✅ (com dados sintéticos)
 - Métricas além do `laya.evals`: precisão/recall/F1, matriz de confusão, Brier, NLL, ECE + diagrama de
   confiabilidade, FPR/FNR, cobertura × risco, abstenção, p50/p95/p99, custo, tudo por fatia.
 - Relatórios JSON/Markdown com identidade (dataset sha256, revisão, versão do pacote).
@@ -98,19 +152,34 @@ versionada e testes de redação e expurgo.
 - Conjunto de avaliação pt-BR inicial (curto, negação, ruído, mistura pt/en) — **precisa de dados do seu domínio**;
   com dados reais, só após o gate DG-1.
 - **Saída:** cada DecisionSpec tem uma política com `calibration_ref`; modo advisory habilitado.
+- **Entregue no Bloco A:** CLI `eval` (relatório JSON/Markdown com id derivado da identidade e dos resultados,
+  métricas por pergunta, classe e fatia), `bands` (limiar por custo → bloco `policy`) e `calibrate` (ajuste do
+  próprio upstream); `policy` e `mode` na DecisionSpec; spec genérico e dataset **sintético** pt-BR em `examples/`.
+  **Pendente:** calibração e bandas com dados reais do domínio, só após o gate DG-1.
 
-### F5 — LLM Gateway
+### F5 — LLM Gateway — Bloco B ✅
 - `LLMProvider` + Anthropic, OpenAI, Gemini, DeepSeek, OpenRouter, Ollama/vLLM, genérico OpenAI-compatível.
 - Configuração por tier, custo, latência e privacidade; retries, circuit breaker, orçamento, métricas de tokens/custo.
 - Saída estruturada com o mesmo schema da DecisionSpec.
 - Testes com provedores falsos; testes reais só com marcador `llm` e chave presente.
 - **Saída:** trocar o modelo de um tier é só configuração.
+- **Entregue no Bloco B** (`DEVELOPMENT.md` §5.5): dois adaptadores sobre os SDKs oficiais — `anthropic` e `openai`
+  (este com `base_url` para OpenAI, Gemini, DeepSeek, OpenRouter, Ollama e vLLM); tiers por configuração; provedor
+  externo recusado sem `allow_external`; orçamento diário e circuit breaker por provedor; retries dos próprios SDKs;
+  saída validada localmente e projetada como a do System-1; tokens, custo e latência em métricas e na auditoria.
+  **Ajuste de escopo:** sem SDK do Gemini (o endpoint compatível com OpenAI basta) e sem LiteLLM (dependência pesada,
+  versões 1.82.7/1.82.8 comprometidas no PyPI em 24/03/2026).
 
-### F6 — System-1/System-2 e política de confiança  *(M3)*
+### F6 — System-1/System-2 e política de confiança  *(M3)* — Bloco B ✅
 - `DecisionPolicy` (bandas, bloqueios por truncamento/colapso/idioma, risco) e `EscalationRouter`
   (preset `router_questions` → tier) + fila de revisão humana.
 - `/api/v1/route` completo; modo 3 (gated) com canário por DecisionSpec.
 - **Saída:** automação apenas na banda calibrada; todo o resto vai para LLM ou humano e fica registrado.
+- **Entregue no Bloco B:** `DecisionPolicy` (bandas sobre `answer_confidence`; bloqueios por abstenção, truncamento,
+  opções colapsadas, idioma, `risk: high` e `never_auto_if`); modo `gated` com canário determinístico por spec;
+  escalonamento para o tier do spec ou para a fila de revisão humana (sem o texto de entrada; a resolução vira rótulo
+  para a F8); `/api/v1/route` completo. **Ajuste de escopo:** a escolha automática do tier pelo preset
+  `router_questions` do upstream ficou para quando houver mais de um tier em uso; hoje o tier é fixo por spec.
 
 ### F7 — Specialist Registry
 - Manifestos, armazenamento de artefatos com sha256, máquina de estados de promoção com portões objetivos,
@@ -209,6 +278,10 @@ versionada e testes de redação e expurgo.
 
 ## 5. Próximo passo
 
-Executar a **F3** (gateway, auditoria e modo shadow), somente com dados sintéticos até o gate DG-1. Antes ou durante
-a F3, rodar uma vez a suíte com pesos numa máquina com acesso ao Hugging Face e gravar o baseline dos golden tests
+Integrar o **Bloco A** (PR #3) e, em seguida, abrir o PR do **Bloco B** (F5 + F6), já implementado. Antes de
+dados reais, aprovar o gate DG-1; o próximo bloco é o **C** (F7 + F8).
+Rodar uma vez a suíte com pesos numa máquina com acesso ao Hugging Face e gravar o baseline dos golden tests
 (`DEVELOPMENT.md` §8). O nome `laya_platform` continua provisório.
+
+Melhoria registrada para o procedimento de atualização do upstream: um portão que detecte mudança no corpo/AST de
+`Agent._check_question` e obrigue a revisar o espelho `validate_question` da `DecisionSpec`.

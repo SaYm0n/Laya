@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 import tomllib
 from importlib.metadata import metadata
@@ -41,13 +42,23 @@ def test_package_ships_a_typing_marker() -> None:
 
 def test_core_dependencies_stay_minimal() -> None:
     # F2 adds what DecisionSpec imports directly (pydantic, PyYAML). Optional capabilities arrive
-    # as extras in later phases; none exists yet.
+    # as extras: the gateway's (Block A: HTTP server, audit store, metrics), the LLM SDKs (Block B).
     assert _pyproject()["project"]["dependencies"] == [
         "laya==0.3.23",
         "pydantic>=2.13.5,<3",
         "pyyaml>=6.0.3,<7",
     ]
-    assert "optional-dependencies" not in _pyproject()["project"]
+    extras = _pyproject()["project"]["optional-dependencies"]
+    assert set(extras) == {"gateway", "llm"}
+    assert sorted(re.split(r"[<>=]", r)[0] for r in extras["gateway"]) == [
+        "alembic",
+        "fastapi",
+        "prometheus-client",
+        "sqlalchemy",
+        "uvicorn",
+    ]
+    # Official SDKs only (no aggregator library): see docs/IMPLEMENTATION_ROADMAP.md, F5.
+    assert sorted(re.split(r"[<>=]", r)[0] for r in extras["llm"]) == ["anthropic", "openai"]
 
 
 def test_contract_test_tools_are_not_runtime_dependencies() -> None:

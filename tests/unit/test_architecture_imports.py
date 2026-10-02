@@ -130,11 +130,25 @@ def test_the_adapter_exists_and_is_the_only_exception() -> None:
         "laya_platform.core",
         "laya_platform.core.adapters",
         "laya_platform.core.upstream_compat",
+        "laya_platform.evaluation",
+        "laya_platform.gateway",  # the settings; the app itself needs the gateway extra
+        "laya_platform.client",
+        "laya_platform.llm",  # the SDKs load only when a provider of their kind is built
     ],
 )
 def test_importing_the_core_pulls_no_heavy_runtime(module: str) -> None:
     # A fresh interpreter, so modules imported by other tests cannot hide an import.
-    heavy = ("torch", "onnxruntime", "transformers", "fastapi", "starlette", "uvicorn", "mcp")
+    heavy = (
+        "torch",
+        "onnxruntime",
+        "transformers",
+        "fastapi",
+        "starlette",
+        "uvicorn",
+        "mcp",
+        "anthropic",
+        "openai",
+    )
     code = (
         f"import sys, {module}\n"
         f"loaded = [m for m in {heavy!r} if m in sys.modules]\n"

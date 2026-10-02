@@ -8,6 +8,7 @@ of every argument and which ones are required. Nothing is called, so no checkpoi
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import Any
 
@@ -127,5 +128,6 @@ def test_the_server_is_stdio_and_builds_nothing_on_import() -> None:
 def test_the_platform_adds_no_mcp_tools_yet() -> None:
     # Administrative platform_* tools are F10; until then nothing in src/ registers a tool.
     sources = "\n".join(p.read_text(encoding="utf-8") for p in SRC.rglob("*.py"))
-    assert "platform_" not in sources
+    # A tool name starts with platform_; the gateway's Prometheus names (laya_platform_*) do not.
+    assert not re.search(r"(?<!\w)platform_", sources)
     assert ".tool(" not in sources

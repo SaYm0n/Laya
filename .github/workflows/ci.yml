@@ -75,7 +75,7 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Install (light profile, locked hashes, no torch/CUDA)
         shell: bash
-        run: uv sync --locked $(uv run --no-project python scripts/ci_install_args.py)
+        run: uv sync --locked --all-extras $(uv run --no-project python scripts/ci_install_args.py)
       - run: uv run mypy
       - run: uv run lint-imports
 
@@ -105,7 +105,7 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Install (light profile, locked hashes, no torch/CUDA)
         shell: bash
-        run: uv sync --locked $(uv run --no-project python scripts/ci_install_args.py)
+        run: uv sync --locked --all-extras $(uv run --no-project python scripts/ci_install_args.py)
       - name: Default suite (unit + compatibility; network/weights/gpu/llm stay gated off)
         run: uv run pytest
       - name: CLI smoke test

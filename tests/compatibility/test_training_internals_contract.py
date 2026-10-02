@@ -29,6 +29,7 @@ INTERNAL_SIGNATURES = {
     "laya.common.collate_items": "(batch, pad_id)",
     "laya.agent._fix_tokenizer_config": "(path)",
     "laya.agent.Agent._check_question": "(qid, qdef)",
+    "laya.calibrate.records_from_labeled": "(agent, pairs)",
 }
 
 #: Training-side names the upstream exports publicly (laya.__all__): no adapter needed for them.

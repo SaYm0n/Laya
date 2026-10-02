@@ -31,6 +31,22 @@ dependencies = [
     "pyyaml>=6.0.3,<7",
 ]
 
+[project.optional-dependencies]
+# Block A (F3+F4): the HTTP gateway, its audit store and metrics. The core stays importable without.
+gateway = [
+    "alembic>=1.20.0",
+    "fastapi>=0.142.2",
+    "prometheus-client>=0.26.0",
+    "sqlalchemy>=2.1.2",
+    "uvicorn>=0.54.0",
+]
+# Block B (F5): official SDKs only -- `anthropic` for Claude, `openai` (with base_url) for OpenAI and every
+# OpenAI-compatible endpoint (Gemini, DeepSeek, OpenRouter, Ollama, vLLM). Imported only by laya_platform.llm.
+llm = [
+    "anthropic>=1.11.0",
+    "openai>=3.24.0",
+]
+
 [project.urls]
 Repository = "https://github.com/SaYm0n/Laya"
 Upstream = "https://github.com/NandhaKishorM/laya"
@@ -146,6 +162,42 @@ forbidden_modules = [
     "torch",
     "transformers",
 ]
+# The LLM Gateway (F5) is the one place an LLM SDK is imported, and only in its provider modules.
+ignore_imports = [
+    "laya_platform.llm.anthropic_provider -> anthropic",
+    "laya_platform.llm.openai_provider -> openai",
+]
+
+[[tool.importlinter.contracts]]
+name = "The decision core knows nothing of the gateway, the store or evaluation"
+type = "forbidden"
+source_modules = ["laya_platform.core"]
+forbidden_modules = [
+    "alembic",
+    "fastapi",
+    "laya_platform.client",
+    "laya_platform.evaluation",
+    "laya_platform.gateway",
+    "laya_platform.llm",
+    "laya_platform.storage",
+    "prometheus_client",
+    "sqlalchemy",
+    "starlette",
+    "uvicorn",
+]
+
+[[tool.importlinter.contracts]]
+name = "Layers: gateway over evaluation/client/llm, over the store and the core"
+type = "layers"
+layers = [
+    "laya_platform.cli",
+    "laya_platform.gateway",
+    "laya_platform.evaluation | laya_platform.client | laya_platform.llm",
+    "laya_platform.storage",
+    "laya_platform.core",
+]
+containers = []
+exhaustive = false
 
 # import-linter cannot forbid submodules of an external package (laya.common, laya.agent, ...).
 # That rule -- laya internals only through the future upstream_compat adapter -- is enforced by

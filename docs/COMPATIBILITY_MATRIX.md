@@ -50,10 +50,12 @@
 | `POST /v1/systemone` | ✅ | ✅ | ✅ montado do upstream | contrato wire/API compatível (validação semântica) |
 | `POST /v1/systemone/batch` | ✅ (≤ 64 estados) | ❓ | ✅ montado do upstream | |
 | `GET /health` | ✅ (detalhes só com bearer quando há chave) | ❓ | ✅ montado do upstream | liveness |
-| `GET /ready` | ❌ | ❓ | 🆕 | prontidão: checkpoints carregados, banco, flags |
-| `GET /metrics` | ❌ | ❓ | 🆕 | formato Prometheus |
-| `POST /api/v1/decide` | ❌ | ❌ | 🆕 | JSON Schema/Pydantic → valores tipados + política |
-| `POST /api/v1/route` | ❌ | ❌ | 🆕 | System-1/System-2: decide quem responde (Laya, especialista, LLM, humano) |
+| `GET /ready` | ❌ | ❓ | ✅ Bloco A | prontidão: banco, specs carregados, engine (503 se não) |
+| `GET /metrics` | ❌ | ❓ | ✅ Bloco A | formato Prometheus (escopo `metrics`) |
+| `POST /api/v1/decide` | ❌ | ❌ | ✅ Blocos A + B | DecisionSpec → valores tipados, veredito da política, System-2 ou fila humana; `act` só em `gated`, banda `auto`, dentro do canário |
+| `POST /api/v1/route` | ❌ | ❌ | ✅ Bloco B | com `spec`: quem responderia (Laya, tier de LLM ou humano), sem auditoria nem chamada de LLM; sem `spec`: a rota do Router |
+| `GET /api/v1/reviews`, `POST /api/v1/reviews/{id}/resolve` | ❌ | ❌ | ✅ Bloco B | fila de revisão humana (escopo `review`); sem o texto de entrada |
+| `GET /api/v1/specs`, `GET`/`PUT /api/v1/flags` | ❌ | ❌ | ✅ Bloco A | specs e modo efetivo; kill switch e modo por spec |
 | `/api/v1/models`, `/api/v1/specialists`, `/api/v1/evaluations`, `/api/v1/router`, `/api/v1/audit` | ❌ | ❌ | 🆕 | administração |
 
 > O plano original listava `/v1/decide` e `/v1/route` como "endpoints base". Eles **não existem** no upstream
@@ -77,10 +79,10 @@
 | níveis por `score` | 32 | ❓ | 32 |
 | perguntas por requisição | 64 | ❓ | 64 |
 | opções no total | 512 | ❓ | 512 |
-| estado | 50.000 caracteres | ❓ | configurável, ≤ upstream |
-| corpo | 2 MiB | ❓ | 2 MiB |
+| estado | 50.000 caracteres | ❓ | 50.000 também em `/api/v1/decide`, medido como o upstream mede |
+| corpo | 2 MiB | ❓ | 2 MiB também em `/api/v1/*` |
 | orçamento de tokens por requisição | 8192 (`LAYA_MAX_TOKEN_BUDGET`) | — | idem |
-| concorrência admitida | 16 (503 + `Retry-After`) | ❓ | idem + fila de micro-batching |
+| concorrência admitida | 16 (503 + `Retry-After`) | ❓ | idem em `/v1/systemone*`; micro-batching próprio adiado (o batch do upstream está montado) |
 
 Os limites, os status codes e as mensagens abaixo são verificados contra o próprio app do upstream em
 `test_http_wire_contract.py` (incluindo o 503 com `Retry-After: 1` quando a admissão está cheia).
@@ -191,14 +193,18 @@ pode depender de IDs concretos (`claude-*`, `gpt-*`, `gemini-*`, `deepseek-*` ou
 (`tests/unit/test_model_id_guard.py`) falha se um desses padrões aparecer em `src/`, `scripts/` ou `tests/`. IDs concretos
 existem apenas em arquivos de configuração e em documentação **datada**, como a coluna abaixo.
 
-| provedor | adaptador | observação |
+| provedor | adaptador (Bloco B) | observação |
 |---|---|---|
-| Anthropic | 🆕 `AnthropicProvider` (SDK oficial `anthropic`) | referência datada (2026-10-02), apenas exemplo de configuração: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
-| OpenAI | 🆕 `OpenAIProvider` | IDs de modelo ❓ (não verificados nesta auditoria) |
-| Google Gemini | 🆕 `GeminiProvider` | ❓ |
-| DeepSeek | 🆕 `DeepSeekProvider` (API compatível OpenAI) | ❓ |
-| OpenRouter | 🆕 `OpenRouterProvider` | ❓ |
-| Ollama / vLLM / OpenAI-compatível | 🆕 `OpenAICompatibleProvider` | modelos locais |
+| Anthropic | ✅ `AnthropicProvider` — SDK oficial `anthropic`, Messages API, `output_config.format` (JSON schema), `effort` por tier, *fallback* de recusa do servidor opcional (`fallbacks: default`, beta) | referência datada (2026-10-02), apenas exemplo de configuração: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
+| OpenAI | ✅ `OpenAICompatibleProvider` — SDK oficial `openai`, Chat Completions, `response_format` `json_schema` estrito | IDs ❓ (não verificados nesta auditoria); `max_tokens_param: max_completion_tokens` |
+| Google Gemini | ✅ `OpenAICompatibleProvider` com `base_url` do endpoint compatível com OpenAI do Gemini | adesão ao schema menos estrita: a validação local decide |
+| DeepSeek | ✅ `OpenAICompatibleProvider` (`base_url` da DeepSeek) | `json_mode: json_object` se o servidor não aplicar o schema (o prompt já contém "JSON") |
+| OpenRouter | ✅ `OpenAICompatibleProvider` (`base_url` do OpenRouter) | |
+| Ollama / vLLM / OpenAI-compatível | ✅ `OpenAICompatibleProvider` com `local: true` | dados não saem da sua infraestrutura; sem chave |
+
+Seja qual for o provedor, a resposta é validada localmente contra o schema derivado da `DecisionSpec` e projetada
+pela mesma função do System-1 (`spec_values` → `laya.structured.answers_to_json`), para que valores do System-1 e
+do System-2 sejam comparáveis um a um. Provedor não `local` é recusado sem `llm.allow_external`.
 
 ## 11. Suíte de testes de compatibilidade (`tests/compatibility/`)
 
@@ -214,6 +220,7 @@ instalado (workflow Full install), sem pesos; **pesos** = `--run-weights`, fora 
 | `test_abstention.py` | sem pesos | `GATE_STATES`, validação de `min_confidence`, estados `passed`/`abstained`/`unevaluated`, eco do limiar, gate aplicado pelo Router, `FakeEngine` usando o gate do upstream, projeção para `None` em `decide` |
 | `test_confidence_semantics.py` | sem pesos + `torch` | `confidence` ≠ `answer_confidence` (e ≠ Jev); `answer_confidence_value` nunca cai para `confidence`; o gate do upstream cai (risco registrado); o código da plataforma nunca lê `confidence`; fórmulas do `FakeEngine` = fórmulas do upstream (`torch`) |
 | `test_http_wire_contract.py` | sem pesos | app do upstream (`create_app`) com Router real e agente substituto: schema, campos, tipos, valores, status 400/401/413/422/500/503, mensagens, limites, `/health`, batch, `Server-Timing`; o `RemoteEngine` fala esse contrato de ponta a ponta; comparação sobre o JSON interpretado, nunca binária |
+| `test_gateway_contract.py` | sem pesos | o gateway sobre um Router real: `/v1/systemone` e `/health` respondem pelo gateway exatamente como pelo app do upstream sozinho; recusas e `LAYA_API_KEY` do upstream inalteradas; `/api/v1/decide` usa o `engine.checkpoint` do spec; engine remota não monta o app |
 | `test_mcp_tools_contract.py` | sem pesos | as 8 ferramentas do servidor MCP do upstream, argumentos, tipos e obrigatórios; nenhuma ferramenta `platform_*` |
 | `test_training_internals_contract.py` | sem pesos + `torch` | os internos auditados existem com a mesma assinatura e o registro do `upstream_compat` nomeia exatamente esses; resolvem de fato onde há torch |
 | `test_primitives_shape.py` | pesos | forma real de `choice`/`score`/`noul`, `labels`, `option_order` |
@@ -230,11 +237,11 @@ exige que cada uma derrube o teste que a guarda.
 |---|---|
 | `proper_reward`, `render_options`, `QTYPES` são públicos no 0.3.23 | só `build_model`, `build_sequence`, `collate_items`, `_fix_tokenizer_config` (e `Agent._check_question`) precisam do adaptador |
 | A localização do adaptador era citada como `training.upstream_compat` | corrigida: `laya_platform.core.upstream_compat` (canônica) |
-| `apply_confidence_gate` usa `confidence` quando falta `answer_confidence` | a `DecisionPolicy` (F6) deve ler `answer_confidence_value` e tratar `None` como não avaliado |
+| `apply_confidence_gate` usa `confidence` quando falta `answer_confidence` | a `DecisionPolicy` (Bloco B) lê `answer_confidence_value` e manda `None` para a banda de captura, nunca para `auto` (`tests/unit/test_policy.py`) |
 | `ONNXAgent` importa torch via `laya.common` | ONNX no 0.3.23 não elimina o torch; imagens ONNX-CPU (F16) precisam reavaliar |
 | A validação autoritativa de perguntas (`Agent._check_question`) vive no módulo que importa torch | a `DecisionSpec` espelha essas regras (mesmo veredito, nada a mais) para validar no perfil leve; a igualdade é conferida contra o upstream nos testes `torch` e as perguntas seguem ao engine sem alteração |
 | `laya.structured` ignora `required`, transforma `const` em `choice` de uma opção e `number` com limites inteiros em `score` | congelado em `test_schema_contract.py`; propriedades opcionais continuam sendo perguntadas |
 | Sem `description`, o upstream pergunta "What is `x`?" | a `DecisionSpec` aceita e preserva esse comportamento; `description` é recomendação de qualidade (candidata a lint opcional), não requisito |
-| Os limites HTTP do `laya.serve` não existem no `Agent` em processo | não são aplicados à `DecisionSpec`; aplicá-los aos specs é uma decisão em aberto (um spec acima deles recebe 413 por HTTP) |
+| Os limites HTTP do `laya.serve` não existem no `Agent` em processo | não são aplicados à `DecisionSpec` (são do transporte); decisão aprovada: o gateway com engine remota recusa na inicialização um spec acima deles (Bloco A) |
 | O `laya.Router` aceita só 3 nomes | confirmado (`unknown model`); especialistas continuam previstos para cima do Router (F7) |
 | `/v1/systemone` não tem rota de roteamento | `RemoteEngine.route` gera erro explícito; o roteamento vem no bloco `routing` de cada resposta |

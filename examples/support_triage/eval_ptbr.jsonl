@@ -1,0 +1,24 @@
+{"state": "Fui cobrado duas vezes na fatura deste mês.", "expected": {"department": "billing", "urgency": 2, "churn_risk": false}, "language": "pt", "tags": ["short"]}
+{"state": "O boleto venceu ontem e não consigo gerar a segunda via no site.", "expected": {"department": "billing", "urgency": 2, "churn_risk": false}, "language": "pt", "tags": ["short"]}
+{"state": "Quero saber se dá pra parcelar a anuidade, sem pressa.", "expected": {"department": "billing", "urgency": 0, "churn_risk": false}, "language": "pt", "tags": ["short"]}
+{"state": "Se cobrarem essa taxa de novo eu cancelo tudo e vou pra concorrência.", "expected": {"department": "billing", "urgency": 2, "churn_risk": true}, "language": "pt", "tags": ["churn"]}
+{"state": "Não quero cancelar, só entender por que o valor da mensalidade subiu.", "expected": {"department": "billing", "urgency": 1, "churn_risk": false}, "language": "pt", "tags": ["negation"]}
+{"state": "o sistema caiu de novo!!! ninguem da equipe consegue trabalhar", "expected": {"department": "technical", "urgency": 3, "churn_risk": false}, "language": "pt", "tags": ["noise"]}
+{"state": "O aplicativo fecha sozinho quando abro a tela de relatórios.", "expected": {"department": "technical", "urgency": 1, "churn_risk": false}, "language": "pt", "tags": ["short"]}
+{"state": "Integração com a API retornando erro 500 desde as 9h, produção parada.", "expected": {"department": "technical", "urgency": 3, "churn_risk": false}, "language": "pt", "tags": ["short"]}
+{"state": "Não é urgente, mas o botão de exportar não funciona no navegador antigo.", "expected": {"department": "technical", "urgency": 0, "churn_risk": false}, "language": "pt", "tags": ["negation"]}
+{"state": "Terceira vez que o servidor fica fora do ar essa semana. Vamos migrar pra outro fornecedor.", "expected": {"department": "technical", "urgency": 3, "churn_risk": true}, "language": "pt", "tags": ["churn"]}
+{"state": "The dashboard is down e o time inteiro está parado, please help", "expected": {"department": "technical", "urgency": 3, "churn_risk": false}, "language": "pt", "tags": ["mixed"]}
+{"state": "login nao funciona, da erro de senha invalida mas a senha ta certa", "expected": {"department": "technical", "urgency": 2, "churn_risk": false}, "language": "pt", "tags": ["noise"]}
+{"state": "Preciso trocar o e-mail cadastrado da conta da empresa.", "expected": {"department": "account", "urgency": 1, "churn_risk": false}, "language": "pt", "tags": ["short"]}
+{"state": "Como adiciono mais um usuário administrador?", "expected": {"department": "account", "urgency": 0, "churn_risk": false}, "language": "pt", "tags": ["short"]}
+{"state": "Mudamos de CNPJ e precisamos atualizar os dados da conta antes do fechamento.", "expected": {"department": "account", "urgency": 2, "churn_risk": false}, "language": "pt", "tags": ["long"]}
+{"state": "Quero encerrar minha conta, não uso mais o serviço.", "expected": {"department": "account", "urgency": 1, "churn_risk": true}, "language": "pt", "tags": ["churn"]}
+{"state": "Não pretendo sair, mas preciso remover um ex-funcionário da conta hoje.", "expected": {"department": "account", "urgency": 2, "churn_risk": false}, "language": "pt", "tags": ["negation"]}
+{"state": "pls update the billing address na minha conta, valeu", "expected": {"department": "account", "urgency": 0, "churn_risk": false}, "language": "pt", "tags": ["mixed"]}
+{"state": "Recebi nota fiscal com o valor errado 😡 arrumem isso", "expected": {"department": "billing", "urgency": 1, "churn_risk": false}, "language": "pt", "tags": ["noise"]}
+{"state": "Cancel my subscription, o suporte nunca responde.", "expected": {"department": "account", "urgency": 1, "churn_risk": true}, "language": "pt", "tags": ["mixed", "churn"]}
+{"state": "Ajuda", "expected": {"department": "technical", "urgency": 1, "churn_risk": false}, "language": "pt", "tags": ["short"]}
+{"state": "I was charged twice this month.", "expected": {"department": "billing", "urgency": 2, "churn_risk": false}, "language": "en", "tags": ["short"]}
+{"state": "The app crashes on startup since the last update, nobody can log in.", "expected": {"department": "technical", "urgency": 3, "churn_risk": false}, "language": "en", "tags": ["short"]}
+{"state": "We are not leaving, we just need one more seat on the account.", "expected": {"department": "account", "urgency": 0, "churn_risk": false}, "language": "en", "tags": ["negation"]}

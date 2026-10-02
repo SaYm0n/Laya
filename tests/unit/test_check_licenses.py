@@ -142,6 +142,7 @@ def test_every_locked_release_has_a_scope(lic: ModuleType) -> None:
     scopes = {name: scope for name, _, scope in releases}
     assert scopes["laya"] == "runtime"
     assert scopes["torch"] == "runtime"
+    assert scopes["sqlalchemy"] == "runtime"  # the gateway extra is deployed, not a dev tool
     assert scopes["pytest"] == "dev"
 
 
