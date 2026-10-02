@@ -10,7 +10,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
-from laya_platform.storage.models import AuditEvent, FeatureFlag, utc_now
+from laya_platform.storage.models import AuditEvent, FeatureFlag, ReviewItem, utc_now
 
 MIGRATIONS = Path(__file__).resolve().parent / "migrations"
 
@@ -51,6 +51,35 @@ class Database:
         with self._sessions() as session:
             query = select(AuditEvent).order_by(AuditEvent.id.desc()).limit(limit)
             return list(session.scalars(query))
+
+    def open_review(self, item: ReviewItem) -> int:
+        with self._sessions.begin() as session:
+            session.add(item)
+            session.flush()
+            return item.id
+
+    def reviews(self, status: str | None = "open", limit: int = 100) -> list[ReviewItem]:
+        with self._sessions() as session:
+            query = select(ReviewItem).order_by(ReviewItem.id).limit(limit)
+            if status is not None:
+                query = query.where(ReviewItem.status == status)
+            return list(session.scalars(query))
+
+    def review(self, review_id: int) -> ReviewItem | None:
+        with self._sessions() as session:
+            return session.get(ReviewItem, review_id)
+
+    def resolve_review(
+        self, review_id: int, resolution: dict[str, Any], resolver: str
+    ) -> ReviewItem | None:
+        """Close an open item; None when it does not exist or is already resolved."""
+        with self._sessions.begin() as session:
+            item = session.get(ReviewItem, review_id)
+            if item is None or item.status != "open":
+                return None
+            item.status, item.resolution, item.resolver = "resolved", resolution, resolver
+            item.resolved_at = utc_now()
+            return item
 
     def flags(self) -> dict[str, Any]:
         with self._sessions() as session:

@@ -30,10 +30,10 @@ Three kinds of rule apply, and only these:
    no Python object tags.
 3. **The platform's own envelope**: ``id``, ``version``, ``languages``, ``engine.checkpoint`` (a
    name the upstream Router accepts), the integration ``mode`` (``offline``, ``shadow``,
-   ``advisory``) and the confidence ``policy`` (bands over ``answer_confidence`` plus the
-   ``calibration_ref`` of the evaluation report behind them; reported, never acted on). Keys of
-   later phases -- ``risk`` and ``policy.never_auto_if`` (F6), modes ``gated`` and ``production``
-   (Block B), specialists (F7) -- are refused with the phase instead of being accepted and ignored.
+   ``advisory``, ``gated``), ``risk`` and the ``policy`` (bands over ``answer_confidence`` plus the
+   ``calibration_ref`` of the evaluation report behind them, ``never_auto_if``, the escalation
+   tier and the gated canary). Keys of later phases -- mode ``production`` (F17), specialists
+   (F7) -- are refused with the phase instead of being accepted and ignored.
 
 Recommended, never enforced: a ``description`` on every schema property (docs/UPSTREAM_ANALYSIS.md
 §3.9 shows the generic instruction is a poor question).
@@ -70,22 +70,16 @@ ID_PATTERN = r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$"
 LANGUAGE_PATTERN = r"^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
 SUPPORTED_SUFFIXES = (".yaml", ".yml", ".json")
 
-#: Keys of the documented DecisionSpec format (ARCHITECTURE_PROPOSAL.md §6.2) that belong to later
-#: phases. Refused with the reason, so a spec written ahead of time fails loudly.
-NOT_YET_SUPPORTED = {
-    "risk": "risk levels are enforced by the DecisionPolicy (Block B, F6)",
-}
-POLICY_NOT_YET_SUPPORTED = {
-    "never_auto_if": "blocking rules are enforced by the DecisionPolicy (Block B, F6)",
-}
-#: Integration modes (ARCHITECTURE_PROPOSAL.md §6.13). Only the ones that never act are available:
-#: offline (evaluation only), shadow (the default) and advisory.
-MODES = ("offline", "shadow", "advisory")
+#: Integration modes (ARCHITECTURE_PROPOSAL.md §6.13): offline (evaluation only), shadow (the
+#: default), advisory, and gated (acts on the calibrated band, for a canary share of the traffic).
+MODES = ("offline", "shadow", "advisory", "gated")
+#: Refused with the phase, so a spec written ahead of time fails loudly.
 LATER_MODES = {
-    "gated": "automation on the calibrated band needs the DecisionPolicy (Block B, F6)",
-    "production": "production automation comes after gated (Block B onwards)",
+    "production": "production rollout comes after gated, with guardrails and deployment (F17)",
 }
 OUTCOMES = ("auto", "review", "escalate")
+Outcome = Literal["auto", "review", "escalate"]
+RISKS = ("low", "medium", "high")
 ENGINE_NOT_YET_SUPPORTED = {
     "specialist": "specialists are registered and selected from F7 (SpecialistRegistry)",
     "fallback_checkpoint": "a fallback exists only once specialists do (F7); use 'checkpoint'",
@@ -255,24 +249,30 @@ class Band(_Frozen):
     """One confidence band: answers with ``answer_confidence >= min`` get ``outcome``."""
 
     min: Annotated[float, Field(ge=0.0, le=1.0, strict=True)] | None = None
-    outcome: Literal["auto", "review", "escalate"]
+    outcome: Outcome
+
+
+class NeverAutoRule(_Frozen):
+    """Never automate when the decided value of ``question`` equals ``equals``."""
+
+    question: Annotated[StrictStr, StringConstraints(min_length=1)]
+    equals: StrictStr | StrictInt | bool | None
 
 
 class Policy(_Frozen):
-    """Bands over ``answer_confidence`` and the evaluation report that justified them.
+    """How answers become outcomes (``laya_platform.core.policy``).
 
-    Until the DecisionPolicy (Block B) nothing acts on them: the gateway reports the band each
-    answer falls in, in shadow and advisory mode alike.
+    ``bands`` map ``answer_confidence`` to auto / review / escalate and ``calibration_ref`` names
+    the evaluation report that justified them. ``never_auto_if`` blocks automation on given values,
+    ``escalation_tier`` is the LLM tier that answers an ``escalate`` (unset: a human does), and
+    ``canary`` is the share of traffic a ``gated`` spec may act on.
     """
 
     calibration_ref: Annotated[StrictStr, StringConstraints(min_length=1, strip_whitespace=True)]
     bands: Annotated[tuple[Band, ...], Field(min_length=1)]
-
-    @model_validator(mode="before")
-    @classmethod
-    def _not_yet(cls, data: Any) -> Any:
-        _refuse_not_yet(data, POLICY_NOT_YET_SUPPORTED, "policy.")
-        return data
+    never_auto_if: tuple[NeverAutoRule, ...] = ()
+    escalation_tier: Annotated[StrictStr, StringConstraints(min_length=1)] | None = None
+    canary: Annotated[float, Field(ge=0.0, le=1.0, strict=True)] = 0.0
 
     @model_validator(mode="after")
     def _ordered_bands(self) -> Self:
@@ -288,7 +288,7 @@ class Policy(_Frozen):
             raise ValueError("band minimums must be strictly decreasing")
         return self
 
-    def outcome(self, answer_confidence: float | None) -> str:
+    def outcome(self, answer_confidence: float | None) -> Outcome:
         """The band an answer falls in; no usable ``answer_confidence`` -> the catch-all."""
         if answer_confidence is not None:
             for band in self.bands:
@@ -304,13 +304,14 @@ class DecisionSpec(_Frozen):
     questions: dict[Any, Any] | None = None
     languages: Annotated[tuple[LanguageCode, ...], Field(min_length=1)]
     engine: EngineSettings = Field(default_factory=EngineSettings)
-    mode: Literal["offline", "shadow", "advisory"] = "shadow"
+    mode: Literal["offline", "shadow", "advisory", "gated"] = "shadow"
+    #: ``high``: never automated, whatever the band (review at best).
+    risk: Literal["low", "medium", "high"] = "medium"
     policy: Policy | None = None
 
     @model_validator(mode="before")
     @classmethod
     def _not_yet(cls, data: Any) -> Any:
-        _refuse_not_yet(data, NOT_YET_SUPPORTED, "")
         if isinstance(data, Mapping) and data.get("mode") in LATER_MODES:
             raise ValueError(
                 f"mode {data['mode']!r} is not supported yet: {LATER_MODES[data['mode']]}"
@@ -341,6 +342,29 @@ class DecisionSpec(_Frozen):
             except SchemaError as exc:
                 raise ValueError(f"schema is not supported by laya.structured: {exc}") from None
         return self
+
+    @model_validator(mode="after")
+    def _policy_fits_the_spec(self) -> Self:
+        if self.policy is not None:
+            asked = set(self.to_questions())
+            unknown = sorted({r.question for r in self.policy.never_auto_if} - asked)
+            if unknown:
+                raise ValueError(f"policy.never_auto_if names unknown question(s) {unknown}")
+        if self.mode == "gated" and (problem := self.gated_problem()):
+            raise ValueError(f"mode 'gated' {problem}")
+        return self
+
+    def gated_problem(self) -> str | None:
+        """Why this spec cannot run ``gated`` (act on its calibrated band), or None."""
+        if self.policy is None:
+            return "needs a policy (bands with a calibration_ref)"
+        if not any(band.outcome == "auto" for band in self.policy.bands):
+            return "needs an 'auto' band"
+        if self.policy.canary <= 0.0:
+            return "needs policy.canary > 0 (the share of traffic it may act on)"
+        if self.risk == "high":
+            return "is not available for a high-risk spec"
+        return None
 
     def to_questions(self) -> Questions:
         """The upstream questions this spec asks (a fresh copy on every call).

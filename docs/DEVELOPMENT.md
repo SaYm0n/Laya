@@ -1,7 +1,8 @@
 # Desenvolvimento
 
 Guia de desenvolvimento: fluxo de trabalho (modo LEAN), instalação, comandos, categorias de teste, Decision Core
-(F2), gateway e avaliação (Bloco A), CI, proteção da `main` e atualização do upstream. Cobre apenas o que já
+(F2), gateway e avaliação (Bloco A), LLM e System-1/System-2 (Bloco B), CI, proteção da `main` e atualização do
+upstream. Cobre apenas o que já
 existe no repositório.
 
 ## 0. Fluxo de trabalho (modo LEAN, permanente)
@@ -231,8 +232,9 @@ alteração** — `/v1/systemone[/batch]`, `/health` e a autenticação `LAYA_AP
 
 | rota | escopo | o que faz |
 |---|---|---|
-| `POST /api/v1/decide` | `decide` | uma decisão de um spec, auditada; `act` é sempre `false` |
-| `POST /api/v1/route` | `route` | qual checkpoint responderia (501 numa engine sem roteamento) |
+| `POST /api/v1/decide` | `decide` | uma decisão de um spec, auditada; `act` só em `gated` (§5.5) |
+| `POST /api/v1/route` | `route` | com `spec`: quem responderia (§5.5); sem: qual checkpoint (501 numa engine sem roteamento) |
+| `GET /api/v1/reviews`, `POST /api/v1/reviews/{id}/resolve` | `review` | fila de revisão humana (§5.5) |
 | `GET /ready` | — | banco, specs e engine utilizáveis (503 se não) |
 | `GET /metrics` | `metrics` | Prometheus: decisões, erros, latência, `answer_confidence`, bandas, concordância |
 | `GET /api/v1/specs` | `admin` | specs carregados e o modo efetivo |
@@ -266,17 +268,82 @@ via `upstream_compat`) e grava com `Agent.save_calibration`.
 `examples/support_triage/` traz um spec genérico e um dataset **sintético** pt-BR (texto curto, negação, ruído,
 mistura pt/en) só para exercitar o fluxo; calibração com dados reais só depois do DG-1.
 
+### 5.5 LLM Gateway e System-1/System-2 (Bloco B: F5+F6)
+
+**LLM Gateway** (`laya_platform.llm`, extra `llm`): dois adaptadores sobre os SDKs oficiais — `anthropic`
+(Messages API, saída estruturada por `output_config.format`) e `openai` (Chat Completions; com `base_url` atende
+OpenAI, o endpoint compatível do Gemini, DeepSeek, OpenRouter, Ollama e vLLM). Retries e backoff são os dos SDKs.
+O código depende de **tiers**, nunca de IDs de modelo; IDs concretos só na configuração, datados:
+
+```yaml
+llm:
+  allow_external: false          # padrão: nada sai da sua infraestrutura; dados reais só com DG-1
+  daily_budget: 5.0              # na moeda dos preços abaixo; por processo, zera à meia-noite UTC
+  circuit: {failures: 5, cooldown_s: 60}
+  providers:
+    local: {kind: openai_compatible, base_url: "http://localhost:11434/v1", local: true}
+    claude: {kind: anthropic, api_key_env: ANTHROPIC_API_KEY, fallbacks: default}
+  tiers:
+    deep: {provider: claude, model: "<id datado>", input_cost_per_mtok: 4, output_cost_per_mtok: 20,
+           max_tokens: 16000, timeout_s: 60, effort: low}
+```
+
+- Um tier de provedor não `local` é recusado na inicialização sem `allow_external`.
+- O LLM responde às perguntas do próprio spec (rótulo, índice de nível, booleano) num schema portátil (`enum`,
+  `boolean`, `integer`, sem limites numéricos, `additionalProperties: false`). A resposta é **validada
+  localmente** — o suporte a saída estruturada varia por provedor — e projetada pela mesma função do System-1
+  (`spec_values` → `laya.structured.answers_to_json`). O estado vai como dado JSON, com a instrução de não seguir
+  ordens contidas nele (guardrails completos na F9).
+- Falhas tipadas (`unavailable`, `provider`, `refusal`, `output`), cada uma registrada com tokens, custo e latência;
+  métricas `laya_platform_llm_*`.
+
+**System-1/System-2** (`laya_platform.core.policy`): a `policy` do spec transforma cada decisão em `auto`, `review`
+ou `escalate` — a banda mais cautelosa entre as respostas, por `answer_confidence` (sem ele, a banda de captura).
+`auto` cai para `review` quando o modelo não viu o que decidiu ou o spec proíbe: abstenção, truncamento
+(`usage.truncated`), opções colapsadas (`usage.options`), idioma detectado fora de `languages`, `risk: high`,
+`never_auto_if`.
+
+```yaml
+mode: gated
+risk: medium
+policy:
+  calibration_ref: eval-3f2a9c1b0d4e
+  bands: [{min: 0.92, outcome: auto}, {min: 0.7, outcome: review}, {outcome: escalate}]
+  never_auto_if: [{question: churn_risk, equals: true}]
+  escalation_tier: deep          # sem tier: escalate vai para um humano
+  canary: 0.05                   # parcela do tráfego em que `gated` pode agir
+```
+
+| modo | System-2 (LLM) | fila humana | `act` |
+|---|---|---|---|
+| `shadow` | nunca (registra o veredito) | não | `false` |
+| `advisory` | `escalate` com tier: a sugestão vira a do LLM | não (a pessoa já decide tudo) | `false` |
+| `gated` | idem | `review`, e `escalate` sem tier ou com falha do LLM | `true` só com `auto` dentro do canário |
+
+- O canário é determinístico (primeiros 32 bits do HMAC da entrada): a mesma entrada recebe sempre o mesmo
+  tratamento. `gated` exige banda `auto`, `canary > 0` e risco não alto; a flag `mode:<spec>` recusa `gated`
+  para um spec que não o suporta; o kill switch volta tudo para `shadow`.
+- Resposta do LLM **nunca** é executada (`act` só vem do System-1 calibrado).
+- Fila de revisão (`review_items`): guarda trace id, motivo e a sugestão — **não** a entrada. O sistema de origem,
+  que tem a entrada, mostra o caso aos revisores e devolve a resolução (`POST /api/v1/reviews/{id}/resolve`,
+  escopo `review`); as resoluções viram rótulos para a F8 (depois do DG-1).
+- `/api/v1/route` com `spec` é um ensaio: roda o System-1 e a política e diz quem responderia (`laya`, `llm` com o
+  tier, `human`), sem auditar, enfileirar nem chamar LLM.
+- Testes com provedores reais só com `--run-llm` e o modelo em variável de ambiente
+  (`tests/unit/test_llm_live.py`); o CI nunca chama um LLM.
+
 ## 6. Regras de arquitetura verificadas automaticamente
 
 | regra | verificação |
 |---|---|
-| O núcleo não importa runtimes de ML nem frameworks de IA (`torch`, `transformers`, `onnxruntime`, `anthropic`, `openai`, `google`, `langchain*`, `langgraph`, `llama_index`, `crewai`) | `lint-imports` (contrato em `pyproject.toml`) |
-| `laya_platform.core` não importa gateway, store, avaliação, cliente nem FastAPI/SQLAlchemy/Alembic/Prometheus; camadas `cli` → `gateway`/`evaluation`/`client` → `storage` → `core` | `lint-imports` |
+| A plataforma não importa runtimes de ML nem frameworks de IA (`torch`, `transformers`, `onnxruntime`, `anthropic`, `openai`, `google`, `langchain*`, `langgraph`, `llama_index`, `crewai`); única exceção: os SDKs `anthropic`/`openai` nos dois módulos de provedor do `laya_platform.llm` | `lint-imports` (contrato em `pyproject.toml`) |
+| `laya_platform.core` não importa gateway, store, avaliação, cliente, LLM nem FastAPI/SQLAlchemy/Alembic/Prometheus; camadas `cli` → `gateway` → `evaluation`/`client`/`llm` → `storage` → `core` | `lint-imports` |
+| Importar `laya_platform.llm` não carrega os SDKs (só quando um provedor daquele tipo é construído) | `tests/unit/test_architecture_imports.py` |
 | Importar `laya_platform.core` não carrega torch, onnxruntime, transformers, FastAPI, Starlette, uvicorn nem mcp | `tests/unit/test_architecture_imports.py` (interpretador novo) |
 | Internos do Laya (`laya.common`, `laya.agent`, `laya.calibrate`, `laya.fast`, `laya.tl_kernels`, `laya._*`, nomes privados) só via `laya_platform.core.upstream_compat`, inclusive por `importlib.import_module("...")` | `tests/unit/test_architecture_imports.py` |
 | O código da plataforma nunca lê o campo `confidence` (entropia) de uma resposta | `tests/compatibility/test_confidence_semantics.py` |
 | Nenhum ID concreto de modelo LLM em `src/`, `scripts/` ou `tests/` | `tests/unit/test_model_id_guard.py` |
-| Dependências de runtime exatamente as declaradas (`laya==0.3.23`, `pydantic`, `pyyaml`) e um único extra, `gateway` | `tests/unit/test_package_metadata.py` + `scripts/check_dist.py` |
+| Dependências de runtime exatamente as declaradas (`laya==0.3.23`, `pydantic`, `pyyaml`) e os extras `gateway` e `llm` | `tests/unit/test_package_metadata.py` + `scripts/check_dist.py` |
 | Nada de segredos, pesos ou dados no git | `.gitignore` + `tests/unit/test_repo_hygiene.py` + gitleaks |
 
 ## 7. Dependências e lockfile
@@ -286,9 +353,10 @@ mistura pt/en) só para exercitar o fluxo; calibração com dados reais só depo
   `DecisionSpec`).
 - Grupos: `dev` (padrão: pytest, ruff, mypy, import-linter, pre-commit, packaging, types-pyyaml e, **só para os
   testes de contrato**, `fastapi`, `httpx` e `mcp`, que exercitam o app HTTP e o servidor MCP do próprio upstream),
-  `audit` (pip-audit), `package` (twine). Extra `gateway` desde o Bloco A (FastAPI, uvicorn, SQLAlchemy, Alembic,
-  prometheus-client); outros (`llm`, `rag`, `onnx`, ...) só nas fases que precisarem deles. O CI instala com
-  `--all-extras`, e o `pip-audit` e a política de licenças tratam o extra como runtime.
+  `audit` (pip-audit), `package` (twine). Extras: `gateway` desde o Bloco A (FastAPI, uvicorn, SQLAlchemy, Alembic,
+  prometheus-client) e `llm` desde o Bloco B (SDKs oficiais `anthropic` e `openai`); outros (`rag`, `onnx`, ...)
+  só nas fases que precisarem deles. O CI instala com `--all-extras`, e o `pip-audit` e a política de licenças
+  tratam os extras como runtime.
 - Atualizar uma dependência: `uv lock --upgrade-package <nome>` → rodar a suíte → commit do `uv.lock`.
 - O CI recusa um `uv.lock` desatualizado (`uv lock --check`).
 

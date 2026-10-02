@@ -52,8 +52,9 @@
 | `GET /health` | ✅ (detalhes só com bearer quando há chave) | ❓ | ✅ montado do upstream | liveness |
 | `GET /ready` | ❌ | ❓ | ✅ Bloco A | prontidão: banco, specs carregados, engine (503 se não) |
 | `GET /metrics` | ❌ | ❓ | ✅ Bloco A | formato Prometheus (escopo `metrics`) |
-| `POST /api/v1/decide` | ❌ | ❌ | ✅ Bloco A | DecisionSpec → valores tipados, bandas da `policy`, auditoria; `act` sempre `false` até a F6 |
-| `POST /api/v1/route` | ❌ | ❌ | ✅ Bloco A (só System-1) | rota do Router; System-2 (LLM, humano) na F6 |
+| `POST /api/v1/decide` | ❌ | ❌ | ✅ Blocos A + B | DecisionSpec → valores tipados, veredito da política, System-2 ou fila humana; `act` só em `gated`, banda `auto`, dentro do canário |
+| `POST /api/v1/route` | ❌ | ❌ | ✅ Bloco B | com `spec`: quem responderia (Laya, tier de LLM ou humano), sem auditoria nem chamada de LLM; sem `spec`: a rota do Router |
+| `GET /api/v1/reviews`, `POST /api/v1/reviews/{id}/resolve` | ❌ | ❌ | ✅ Bloco B | fila de revisão humana (escopo `review`); sem o texto de entrada |
 | `GET /api/v1/specs`, `GET`/`PUT /api/v1/flags` | ❌ | ❌ | ✅ Bloco A | specs e modo efetivo; kill switch e modo por spec |
 | `/api/v1/models`, `/api/v1/specialists`, `/api/v1/evaluations`, `/api/v1/router`, `/api/v1/audit` | ❌ | ❌ | 🆕 | administração |
 
@@ -192,14 +193,18 @@ pode depender de IDs concretos (`claude-*`, `gpt-*`, `gemini-*`, `deepseek-*` ou
 (`tests/unit/test_model_id_guard.py`) falha se um desses padrões aparecer em `src/`, `scripts/` ou `tests/`. IDs concretos
 existem apenas em arquivos de configuração e em documentação **datada**, como a coluna abaixo.
 
-| provedor | adaptador | observação |
+| provedor | adaptador (Bloco B) | observação |
 |---|---|---|
-| Anthropic | 🆕 `AnthropicProvider` (SDK oficial `anthropic`) | referência datada (2026-10-02), apenas exemplo de configuração: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
-| OpenAI | 🆕 `OpenAIProvider` | IDs de modelo ❓ (não verificados nesta auditoria) |
-| Google Gemini | 🆕 `GeminiProvider` | ❓ |
-| DeepSeek | 🆕 `DeepSeekProvider` (API compatível OpenAI) | ❓ |
-| OpenRouter | 🆕 `OpenRouterProvider` | ❓ |
-| Ollama / vLLM / OpenAI-compatível | 🆕 `OpenAICompatibleProvider` | modelos locais |
+| Anthropic | ✅ `AnthropicProvider` — SDK oficial `anthropic`, Messages API, `output_config.format` (JSON schema), `effort` por tier, *fallback* de recusa do servidor opcional (`fallbacks: default`, beta) | referência datada (2026-10-02), apenas exemplo de configuração: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` |
+| OpenAI | ✅ `OpenAICompatibleProvider` — SDK oficial `openai`, Chat Completions, `response_format` `json_schema` estrito | IDs ❓ (não verificados nesta auditoria); `max_tokens_param: max_completion_tokens` |
+| Google Gemini | ✅ `OpenAICompatibleProvider` com `base_url` do endpoint compatível com OpenAI do Gemini | adesão ao schema menos estrita: a validação local decide |
+| DeepSeek | ✅ `OpenAICompatibleProvider` (`base_url` da DeepSeek) | `json_mode: json_object` se o servidor não aplicar o schema (o prompt já contém "JSON") |
+| OpenRouter | ✅ `OpenAICompatibleProvider` (`base_url` do OpenRouter) | |
+| Ollama / vLLM / OpenAI-compatível | ✅ `OpenAICompatibleProvider` com `local: true` | dados não saem da sua infraestrutura; sem chave |
+
+Seja qual for o provedor, a resposta é validada localmente contra o schema derivado da `DecisionSpec` e projetada
+pela mesma função do System-1 (`spec_values` → `laya.structured.answers_to_json`), para que valores do System-1 e
+do System-2 sejam comparáveis um a um. Provedor não `local` é recusado sem `llm.allow_external`.
 
 ## 11. Suíte de testes de compatibilidade (`tests/compatibility/`)
 
@@ -232,7 +237,7 @@ exige que cada uma derrube o teste que a guarda.
 |---|---|
 | `proper_reward`, `render_options`, `QTYPES` são públicos no 0.3.23 | só `build_model`, `build_sequence`, `collate_items`, `_fix_tokenizer_config` (e `Agent._check_question`) precisam do adaptador |
 | A localização do adaptador era citada como `training.upstream_compat` | corrigida: `laya_platform.core.upstream_compat` (canônica) |
-| `apply_confidence_gate` usa `confidence` quando falta `answer_confidence` | a `DecisionPolicy` (F6) deve ler `answer_confidence_value` e tratar `None` como não avaliado |
+| `apply_confidence_gate` usa `confidence` quando falta `answer_confidence` | a `DecisionPolicy` (Bloco B) lê `answer_confidence_value` e manda `None` para a banda de captura, nunca para `auto` (`tests/unit/test_policy.py`) |
 | `ONNXAgent` importa torch via `laya.common` | ONNX no 0.3.23 não elimina o torch; imagens ONNX-CPU (F16) precisam reavaliar |
 | A validação autoritativa de perguntas (`Agent._check_question`) vive no módulo que importa torch | a `DecisionSpec` espelha essas regras (mesmo veredito, nada a mais) para validar no perfil leve; a igualdade é conferida contra o upstream nos testes `torch` e as perguntas seguem ao engine sem alteração |
 | `laya.structured` ignora `required`, transforma `const` em `choice` de uma opção e `number` com limites inteiros em `score` | congelado em `test_schema_contract.py`; propriedades opcionais continuam sendo perguntadas |

@@ -15,7 +15,8 @@ num ciclo de dados para treinar **especialistas** do seu domínio.
 | F1 — bootstrap, licença, organização e CI | concluída |
 | F2 — Decision Core e compatibilidade | concluída |
 | Bloco A — F3 gateway/auditoria/shadow + F4 avaliação/calibração | implementado (dados sintéticos), em revisão |
-| Bloco B — F5 LLM Gateway + F6 System-1/System-2 | próximo |
+| Bloco B — F5 LLM Gateway + F6 System-1/System-2 | implementado (dados sintéticos), aguarda o merge do A |
+| Bloco C — F7 Specialist Registry + F8 dados e treino | próximo (depois do DG-1) |
 
 O pacote `laya_platform` tem hoje o **Decision Core** (`laya_platform.core`): o protocolo `DecisionEngine`, cinco
 adaptadores (`UpstreamRouterEngine`, `AgentEngine`, `OnnxEngine`, `RemoteEngine`, `FakeEngine`), a `DecisionSpec`
@@ -23,7 +24,10 @@ adaptadores (`UpstreamRouterEngine`, `AgentEngine`, `OnnxEngine`, `RemoteEngine`
 `laya==0.3.23`. Com o extra `gateway` (Bloco A): o gateway HTTP que monta o app do upstream sem alteração e
 acrescenta `/api/v1/decide` auditado em modo shadow/advisory, flags, kill switch e métricas; a avaliação com
 relatório identificado, bandas por custo e calibração pelo próprio upstream (`laya-platform eval|bands|calibrate`).
-Ainda não há política de decisão que aja (F6) nem LLM (F5).
+Com o extra `llm` (Bloco B): System-2 por tiers sobre os SDKs oficiais `anthropic` e `openai` (este também para
+Gemini, DeepSeek, OpenRouter, Ollama e vLLM), com orçamento, circuit breaker e provedor externo desligado por padrão;
+a `DecisionPolicy` decide entre automatizar (modo `gated`, só na banda calibrada e dentro do canário), escalar para
+um LLM ou mandar para a fila de revisão humana.
 
 ```python
 from laya_platform.core import load_decision_spec

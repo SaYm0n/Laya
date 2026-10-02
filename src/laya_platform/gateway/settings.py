@@ -16,11 +16,13 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StringConstraints, model_validator
 
+from laya_platform.llm.config import LLMSettings
+
 if TYPE_CHECKING:
     from laya_platform.core.engine import DecisionEngine
 
 HMAC_KEY_ENV = "LAYA_PLATFORM_HMAC_KEY"
-Scope = Literal["decide", "route", "admin", "metrics"]
+Scope = Literal["decide", "route", "admin", "metrics", "review"]
 
 
 def hash_key(key: str) -> str:
@@ -74,6 +76,8 @@ class GatewaySettings(BaseModel):
     data_classification: Literal["synthetic", "public", "real"] = "synthetic"
     dg1_approval_ref: str | None = None
     engine: EngineConfig = Field(default_factory=EngineConfig)
+    #: System-2 tiers (Block B). Unset: no LLM; escalations go to the review queue.
+    llm: LLMSettings | None = None
 
     @model_validator(mode="after")
     def _safe_to_start(self) -> Self:

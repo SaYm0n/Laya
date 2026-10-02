@@ -6,12 +6,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from laya_platform.storage import AuditEvent, Base, Database
+from laya_platform.storage import AuditEvent, Base, Database, ReviewItem, alembic_config
 from laya_platform.storage.db import MIGRATIONS
 
 
@@ -52,7 +53,8 @@ def test_the_migration_scripts_ship_with_the_package() -> None:
     assert (MIGRATIONS / "env.py").is_file()
     assert (MIGRATIONS / "script.py.mako").is_file()
     assert sorted(p.name for p in (MIGRATIONS / "versions").glob("*.py")) == [
-        "0001_audit_and_flags.py"
+        "0001_audit_and_flags.py",
+        "0002_policy_and_reviews.py",
     ]
 
 
@@ -86,3 +88,40 @@ def test_ping_reports_an_unreachable_database(tmp_path: Path) -> None:
     database = Database(f"sqlite:///{tmp_path / 'missing' / 'audit.db'}")
     assert database.ping() is False
     database.dispose()
+
+
+def test_an_existing_store_upgrades_with_its_rows(tmp_path: Path) -> None:
+    url = f"sqlite:///{tmp_path / 'old.db'}"
+    database = Database(url)
+    with database.engine.begin() as connection:
+        config = alembic_config(url)
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0001")
+        connection.execute(
+            text(
+                "INSERT INTO audit_events (trace_id, created_at, spec_id, spec_version, mode, "
+                "input_hmac, answers, latency_ms, data_classification) VALUES ('old', "
+                "'2026-10-01 00:00:00', 's', 1, 'shadow', :h, '{}', 1.0, 'synthetic')"
+            ),
+            {"h": "0" * 64},
+        )
+    database.upgrade()
+    (event,) = database.audit_events()
+    assert (event.trace_id, event.act, event.outcome, event.system2) == ("old", False, None, None)
+    database.dispose()
+
+
+def test_the_review_queue_round_trip(database: Database) -> None:
+    item = ReviewItem(
+        trace_id="t-1", spec_id="s", spec_version=1, reason="band:q=review", status="open"
+    )
+    review_id = database.open_review(item)
+    assert [r.id for r in database.reviews()] == [review_id]
+    resolved = database.resolve_review(review_id, {"values": {"q": True}}, "ops")
+    assert resolved is not None
+    assert (resolved.status, resolved.resolver) == ("resolved", "ops")
+    assert resolved.resolved_at is not None
+    assert database.resolve_review(review_id, {"values": {}}, "ops") is None
+    assert database.resolve_review(999, {"values": {}}, "ops") is None
+    assert database.reviews() == []
+    assert [r.status for r in database.reviews(status=None)] == ["resolved"]

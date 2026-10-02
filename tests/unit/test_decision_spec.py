@@ -127,21 +127,10 @@ def test_unknown_keys_are_refused(unknown: str) -> None:
     assert f"{unknown}: Extra inputs are not permitted" in _error(_spec(**{unknown: "x"}))
 
 
-def test_keys_of_later_phases_name_their_phase() -> None:
-    message = _error(_spec(risk="high"))
-    assert "'risk' is not supported yet" in message
-    assert "F6" in message
-    policy = {"calibration_ref": "eval-1", "bands": [{"outcome": "review"}], "never_auto_if": []}
-    message = _error(_spec(policy=policy))
-    assert "'policy.never_auto_if' is not supported yet" in message
-    assert "F6" in message
-
-
-@pytest.mark.parametrize("mode", ["gated", "production"])
-def test_modes_that_act_are_refused_with_their_block(mode: str) -> None:
-    message = _error(_spec(mode=mode))
-    assert f"mode {mode!r} is not supported yet" in message
-    assert "Block B" in message
+def test_the_production_mode_names_its_phase() -> None:
+    message = _error(_spec(mode="production"))
+    assert "mode 'production' is not supported yet" in message
+    assert "F17" in message
 
 
 def test_mode_defaults_to_shadow_and_takes_the_modes_that_never_act() -> None:
@@ -149,6 +138,40 @@ def test_mode_defaults_to_shadow_and_takes_the_modes_that_never_act() -> None:
     for mode in ("offline", "shadow", "advisory"):
         assert DecisionSpec.model_validate(_spec(mode=mode)).mode == mode
     assert "mode" in _error(_spec(mode="auto"))
+
+
+GATED_POLICY = {
+    "calibration_ref": "eval-0123456789ab",
+    "bands": [{"min": 0.9, "outcome": "auto"}, {"outcome": "review"}],
+    "canary": 0.1,
+}
+
+
+def test_gated_needs_a_policy_that_can_act() -> None:
+    spec = DecisionSpec.model_validate(_spec(mode="gated", policy=GATED_POLICY))
+    assert (spec.mode, spec.gated_problem()) == ("gated", None)
+    assert "needs a policy" in _error(_spec(mode="gated"))
+    no_auto = GATED_POLICY | {"bands": [{"min": 0.9, "outcome": "review"}, {"outcome": "escalate"}]}
+    assert "needs an 'auto' band" in _error(_spec(mode="gated", policy=no_auto))
+    assert "canary > 0" in _error(_spec(mode="gated", policy=GATED_POLICY | {"canary": 0.0}))
+    assert "high-risk" in _error(_spec(mode="gated", policy=GATED_POLICY, risk="high"))
+
+
+def test_risk_defaults_to_medium() -> None:
+    assert DecisionSpec.model_validate(_spec()).risk == "medium"
+    assert DecisionSpec.model_validate(_spec(risk="high")).risk == "high"
+    assert "risk" in _error(_spec(risk="extreme"))
+
+
+def test_never_auto_if_names_questions_of_the_spec() -> None:
+    rules = [{"question": "churn_risk", "equals": True}]
+    spec = DecisionSpec.model_validate(_spec(policy=GATED_POLICY | {"never_auto_if": rules}))
+    assert spec.policy is not None
+    assert spec.policy.never_auto_if[0].equals is True
+    bad = [{"question": "nope", "equals": 1}]
+    assert "unknown question(s) ['nope']" in _error(
+        _spec(policy=GATED_POLICY | {"never_auto_if": bad})
+    )
 
 
 def _policy(*bands: dict[str, Any]) -> dict[str, Any]:

@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -43,6 +43,31 @@ class AuditEvent(Base):
     latency_ms: Mapped[float] = mapped_column(Float)
     error: Mapped[str | None] = mapped_column(Text)
     data_classification: Mapped[str] = mapped_column(String(16))
+    # Block B (F6): the policy's verdict, whether it was acted on, and System-2 if it ran.
+    outcome: Mapped[str | None] = mapped_column(String(16))
+    act: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    reasons: Mapped[list[str] | None] = mapped_column(JSON)
+    system2: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
+class ReviewItem(Base):
+    """A decision waiting for a human (outcome ``review``, or an escalation System-2 could not
+    answer). It holds no input: the caller, which has the input, shows it to its reviewers and
+    posts the resolution back; the resolution becomes a label for training (F8, after DG-1)."""
+
+    __tablename__ = "review_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    trace_id: Mapped[str] = mapped_column(String(36), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    spec_id: Mapped[str] = mapped_column(String(128), index=True)
+    spec_version: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    suggestion: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolver: Mapped[str | None] = mapped_column(String(128))
+    resolution: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class FeatureFlag(Base):

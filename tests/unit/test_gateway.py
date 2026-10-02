@@ -324,7 +324,7 @@ def test_ready_reports_its_checks(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "ready": True,
-        "checks": {"database": True, "specs": 2, "engine": "FakeEngine"},
+        "checks": {"database": True, "specs": 2, "engine": "FakeEngine", "llm_tiers": []},
     }
 
 
