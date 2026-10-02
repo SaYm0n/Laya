@@ -5,8 +5,9 @@ budget is not spent and the provider's circuit is closed. After it: tokens and c
 the reply is validated against the spec, and every outcome -- answered or not -- is reported to
 ``on_call`` (the HTTP gateway turns it into metrics and audit). Retries are the SDKs' own.
 
-The budget and the circuit live in memory, per process: a restart resets them, and a call that
-starts under the budget may end over it.
+The budget is kept by a ``SpendStore`` -- in memory by default, in the platform's database when
+the HTTP gateway builds it, so every process shares one daily budget. The circuit stays per
+process (each process sees its own failures). A call that starts under the budget may end over it.
 """
 
 from __future__ import annotations
@@ -14,9 +15,9 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from laya_platform.core.spec import DecisionSpec
 from laya_platform.llm.config import LLMSettings, ProviderConfig
@@ -31,6 +32,7 @@ from laya_platform.llm.types import (
     LLMRefusalError,
     LLMUnavailableError,
 )
+from laya_platform.privacy import redact
 
 
 def build_provider(config: ProviderConfig) -> LLMProvider:
@@ -62,6 +64,30 @@ def _build_provider(config: ProviderConfig) -> LLMProvider:
     )
 
 
+class SpendStore(Protocol):
+    """Where the daily System-2 spend is kept. Days are UTC ``YYYY-MM-DD``."""
+
+    def llm_spent(self, day: str) -> float: ...
+
+    def add_llm_spend(self, day: str, amount: float) -> None: ...
+
+
+class MemorySpend:
+    """Per-process spend (the default; the gateway uses its database to share it)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_day: dict[str, float] = {}
+
+    def llm_spent(self, day: str) -> float:
+        with self._lock:
+            return self._by_day.get(day, 0.0)
+
+    def add_llm_spend(self, day: str, amount: float) -> None:
+        with self._lock:
+            self._by_day[day] = self._by_day.get(day, 0.0) + amount
+
+
 @dataclass
 class _Circuit:
     failures: int = 0
@@ -77,6 +103,7 @@ class LLMGateway:
         on_call: Callable[[LLMCall], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         today: Callable[[], date] = lambda: datetime.now(UTC).date(),
+        spend: SpendStore | None = None,
     ) -> None:
         self.settings = settings
         self._providers = dict(providers) if providers is not None else {}
@@ -88,30 +115,43 @@ class LLMGateway:
         self._today = today
         self._lock = threading.Lock()
         self._circuits = {name: _Circuit() for name in settings.providers}
-        self._spent_on: date | None = None
-        self._spent = 0.0
+        self._spend: SpendStore = spend if spend is not None else MemorySpend()
 
     @property
     def tiers(self) -> list[str]:
         return list(self.settings.tiers)
 
     def spent_today(self) -> float:
-        with self._lock:
-            return self._spent if self._spent_on == self._today() else 0.0
+        return self._spend.llm_spent(self._today().isoformat())
 
     def decide(self, tier: str, spec: DecisionSpec, state: Any) -> tuple[dict[str, Any], LLMCall]:
         """Ask ``tier`` the spec's questions about ``state``: spec values and the call's record.
 
         Raises an :class:`LLMError` (with ``call`` set when the provider was reached).
         """
+        redacted = 0
+        if tier in self.settings.tiers and self._redacts(tier):
+            state, counts = redact(state)
+            redacted = sum(counts.values())
         prompt = decision_prompt(spec, state)
-        completion, call = self._complete(tier, prompt.system, prompt.prompt, prompt.schema)
+        try:
+            completion, call = self._complete(tier, prompt.system, prompt.prompt, prompt.schema)
+        except LLMError as exc:
+            if exc.call is not None and redacted:
+                exc.call = replace(exc.call, redacted=redacted)
+            raise
+        call = replace(call, redacted=redacted)
         try:
             values = parse_reply(spec, prompt, completion.text)
         except LLMOutputError as exc:
             raise self._failed(call, exc) from None
         self._report(call)
         return values, call
+
+    def _redacts(self, tier: str) -> bool:
+        settings = self.settings
+        local = settings.is_local(tier)
+        return settings.redact_pii and (not local or settings.redact_local)
 
     # ------------------------------------------------------------------------------- internals
     def _complete(
@@ -149,10 +189,8 @@ class LLMGateway:
             raise self._failed(failed, error) from None
         self._record_success(config.provider)
         cost = config.cost(completion.input_tokens, completion.output_tokens)
-        with self._lock:
-            if self._spent_on != self._today():
-                self._spent_on, self._spent = self._today(), 0.0
-            self._spent += cost
+        if cost:
+            self._spend.add_llm_spend(self._today().isoformat(), cost)
         call = LLMCall(
             tier=tier,
             provider=config.provider,

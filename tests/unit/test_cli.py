@@ -178,3 +178,142 @@ def test_db_upgrade_creates_the_audit_store(
     assert cli.main(["db", "upgrade", "--url", url]) == 0
     assert "at head" in capsys.readouterr().out
     assert (tmp_path / "audit.db").is_file()
+
+
+# ------------------------------------------------------------------------------- Block C commands
+def _db(tmp_path: Path) -> str:
+    return f"sqlite:///{tmp_path / 'ops.db'}"
+
+
+def test_db_purge_and_forget(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    url = _db(tmp_path)
+    assert cli.main(["db", "purge", "--url", url, "--older-than-days", "30"]) == 0
+    assert json.loads(capsys.readouterr().out)["deleted"]["audit_events"] == 0
+    assert cli.main(["db", "purge", "--url", url, "--older-than-days", "0"]) == 1
+    assert cli.main(["db", "forget", "--url", url, "--hmac", "a" * 64]) == 0
+    assert json.loads(capsys.readouterr().out)["inputs"] == 1
+    assert cli.main(["db", "forget", "--url", url]) == 1
+
+
+def test_dataset_split_from_the_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    data = tmp_path / "data.jsonl"
+    rows = [
+        {"state": f"s{i}", "expected": {"churn_risk": True}, "group": f"g{i}"} for i in range(20)
+    ]
+    data.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    spec = str(EXAMPLE / "specs" / "support_triage.yaml")
+    out = tmp_path / "splits"
+    args = ["dataset", "split", "--spec", spec, "--data", str(data), "--out", str(out)]
+    assert cli.main(args) == 0
+    counts = json.loads(capsys.readouterr().out)
+    assert sum(counts.values()) == 20
+    assert (out / "manifest.json").is_file()
+
+
+def test_dataset_build_needs_the_hmac_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("LAYA_PLATFORM_HMAC_KEY", raising=False)
+    spec = str(EXAMPLE / "specs" / "support_triage.yaml")
+    args = [
+        "dataset",
+        "build",
+        "--db-url",
+        _db(tmp_path),
+        "--spec",
+        spec,
+        "--inputs",
+        str(tmp_path / "in.jsonl"),
+        "--out",
+        str(tmp_path / "out.jsonl"),
+    ]
+    assert cli.main(args) == 1
+    assert "LAYA_PLATFORM_HMAC_KEY" in capsys.readouterr().err
+
+
+def test_specialist_registry_from_the_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    manifest = tmp_path / "specialist.yaml"
+    manifest.write_text(
+        yaml.safe_dump(
+            {
+                "name": "examples.triage_pt",
+                "version": "1",
+                "base": "multilingual",
+                "source": "/models/x",
+                "decision_specs": ["examples.support_triage"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    url = _db(tmp_path)
+    register = [
+        "specialist",
+        "register",
+        "--db-url",
+        url,
+        "--manifest",
+        str(manifest),
+        "--actor",
+        "ml",
+    ]
+    assert cli.main(register) == 0
+    assert cli.main(register) == 1  # already registered
+    capsys.readouterr()
+    assert cli.main(["specialist", "list", "--db-url", url]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["versions"][0]["status"] == "experimental"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps({"identity": {}, "overall": {}}), encoding="utf-8")
+    shadow = [
+        "specialist",
+        "shadow",
+        "--db-url",
+        url,
+        "--name",
+        "examples.triage_pt",
+        "--version",
+        "1",
+        "--spec",
+        str(EXAMPLE / "specs" / "support_triage.yaml"),
+        "--report",
+        str(report),
+        "--actor",
+        "ml",
+    ]
+    assert cli.main(shadow) == 1
+    assert "cannot enter shadow" in capsys.readouterr().err
+
+
+def test_train_refuses_a_recipe_that_is_not_the_pinned_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from laya_platform.core import upstream_compat
+
+    fake = tmp_path / "upstream" / upstream_compat.FINETUNE_SCRIPT.path
+    fake.parent.mkdir(parents=True)
+    fake.write_text("print('not it')\n")
+    args = [
+        "train",
+        "--spec",
+        str(EXAMPLE / "specs" / "support_triage.yaml"),
+        "--data",
+        str(tmp_path / "train.jsonl"),
+        "--base-dir",
+        str(tmp_path / "base"),
+        "--base",
+        "english",
+        "--upstream-dir",
+        str(tmp_path / "upstream"),
+        "--out",
+        str(tmp_path / "out"),
+        "--name",
+        "examples.triage_pt",
+        "--version",
+        "1",
+    ]
+    code = cli.main(args)
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "not the pinned" in err  # checked before anything is imported

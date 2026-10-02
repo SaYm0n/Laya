@@ -20,9 +20,10 @@ from pydantic import ValidationError
 from laya_platform.core.adapters import FakeAnswer, FakeEngine
 from laya_platform.core.errors import UnsupportedOperationError
 from laya_platform.gateway import ApiKey, GatewaySettings, hash_key
-from laya_platform.gateway.app import create_app, input_hmac, state_length
+from laya_platform.gateway.app import create_app, state_length
 from laya_platform.gateway.settings import HMAC_KEY_ENV, Scope
 from laya_platform.gateway.specs import SpecStore, wire_limit_problems
+from laya_platform.privacy import input_hmac
 from laya_platform.storage import Database
 
 HMAC_KEY = "k" * 32
@@ -324,7 +325,13 @@ def test_ready_reports_its_checks(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "ready": True,
-        "checks": {"database": True, "specs": 2, "engine": "FakeEngine", "llm_tiers": []},
+        "checks": {
+            "database": True,
+            "specs": 2,
+            "engine": "FakeEngine",
+            "llm_tiers": [],
+            "specialist_errors": {},
+        },
     }
 
 

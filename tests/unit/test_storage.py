@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,14 @@ from alembic.migration import MigrationContext
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from laya_platform.storage import AuditEvent, Base, Database, ReviewItem, alembic_config
+from laya_platform.storage import (
+    AuditEvent,
+    Base,
+    ChallengerResult,
+    Database,
+    ReviewItem,
+    alembic_config,
+)
 from laya_platform.storage.db import MIGRATIONS
 
 
@@ -55,6 +63,7 @@ def test_the_migration_scripts_ship_with_the_package() -> None:
     assert sorted(p.name for p in (MIGRATIONS / "versions").glob("*.py")) == [
         "0001_audit_and_flags.py",
         "0002_policy_and_reviews.py",
+        "0003_specialists_and_operations.py",
     ]
 
 
@@ -125,3 +134,83 @@ def test_the_review_queue_round_trip(database: Database) -> None:
     assert database.resolve_review(999, {"values": {}}, "ops") is None
     assert database.reviews() == []
     assert [r.status for r in database.reviews(status=None)] == ["resolved"]
+
+
+def test_flag_changes_record_who_and_what(database: Database) -> None:
+    database.set_flag("kill_switch", True, actor="ops")
+    database.set_flag("kill_switch", None, actor="oncall")
+    events = database.flag_events()
+    assert [(e.name, e.old, e.new, e.actor) for e in events] == [
+        ("kill_switch", True, None, "oncall"),
+        ("kill_switch", None, True, "ops"),
+    ]
+
+
+def test_llm_spend_is_shared_through_the_database(database: Database, tmp_path: Path) -> None:
+    database.add_llm_spend("2026-10-02", 0.25)
+    other = Database(database.url)  # another gateway process on the same store
+    other.add_llm_spend("2026-10-02", 0.5)
+    assert database.llm_spent("2026-10-02") == pytest.approx(0.75)
+    assert database.llm_spent("2026-10-03") == 0.0
+    other.dispose()
+
+
+def test_review_stats_report_open_items_and_the_oldest(database: Database) -> None:
+    assert database.review_stats() == (0, None)
+    first = database.open_review(
+        ReviewItem(trace_id="a", spec_id="s", spec_version=1, reason="r", status="open")
+    )
+    database.open_review(
+        ReviewItem(trace_id="b", spec_id="s", spec_version=1, reason="r", status="open")
+    )
+    count, oldest = database.review_stats()
+    assert count == 2
+    assert oldest is not None
+    database.resolve_review(first, {"values": {}}, "ops")
+    assert database.review_stats()[0] == 1
+
+
+def test_purge_expires_old_rows_but_keeps_open_reviews(database: Database) -> None:
+    old = datetime(2025, 1, 1, tzinfo=UTC)
+    database.record(_event("old", created_at=old))
+    database.record(_event("new"))
+    database.record_challenger(
+        ChallengerResult(trace_id="old", spec_id="s", name="n", version="1", created_at=old)
+    )
+    open_id = database.open_review(
+        ReviewItem(
+            trace_id="old", spec_id="s", spec_version=1, reason="r", status="open", created_at=old
+        )
+    )
+    done_id = database.open_review(
+        ReviewItem(
+            trace_id="old", spec_id="s", spec_version=1, reason="r", status="open", created_at=old
+        )
+    )
+    database.resolve_review(done_id, {"values": {}}, "ops")
+    with database.transaction() as session:
+        session.get(ReviewItem, done_id).resolved_at = old  # type: ignore[union-attr]
+    deleted = database.purge(datetime(2026, 1, 1, tzinfo=UTC))
+    assert deleted == {"audit_events": 1, "challenger_results": 1, "review_items": 1}
+    assert [e.trace_id for e in database.audit_events()] == ["new"]
+    assert [r.id for r in database.reviews()] == [open_id]
+
+
+def test_forget_erases_every_trace_of_an_input(database: Database) -> None:
+    database.record(_event("t1", input_hmac="a" * 64))
+    database.record(_event("t2", input_hmac="b" * 64))
+    database.open_review(
+        ReviewItem(trace_id="t1", spec_id="s", spec_version=1, reason="r", status="open")
+    )
+    database.record_challenger(ChallengerResult(trace_id="t1", spec_id="s", name="n", version="1"))
+    assert database.forget(["a" * 64]) == {
+        "review_items": 1,
+        "challenger_results": 1,
+        "audit_events": 1,
+    }
+    assert [e.trace_id for e in database.audit_events()] == ["t2"]
+    assert database.forget(["c" * 64]) == {
+        "review_items": 0,
+        "challenger_results": 0,
+        "audit_events": 0,
+    }

@@ -118,9 +118,11 @@ def evaluate(
     examples: Sequence[Example],
     *,
     batch_size: int = 16,
+    routed: bool = True,
 ) -> list[Case]:
+    """``routed=False`` for a single checkpoint (a specialist): no Router control is sent."""
     questions = spec.to_questions()
-    controls = spec.predict_controls()
+    controls = spec.predict_controls() if routed else {}
     cases: list[Case] = []
     for start in range(0, len(examples), batch_size):
         chunk = examples[start : start + batch_size]

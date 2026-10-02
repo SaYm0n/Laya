@@ -1,6 +1,6 @@
 # Roadmap de implementação
 
-> Criado na Fase 0 e atualizado nas Fases 1 e 2 e no Bloco A. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
+> Criado na Fase 0 e atualizado nas Fases 1 e 2 e nos Blocos A, B e C. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
 > e produza os insumos da seguinte. A seção 3 mapeia a numeração original para a nova. Desde a F2 as fases são
 > entregues em **4 blocos** (modo LEAN, `DEVELOPMENT.md` §0), sem criar etapas novas.
 
@@ -19,9 +19,9 @@
 
 | bloco | fases | situação |
 |---|---|---|
-| **A** | F3 + F4 — gateway, auditoria, shadow/advisory, avaliação e calibração | implementado (dados sintéticos); em revisão |
-| **B** | F5 + F6 — LLM Gateway, System-1/System-2 e política de confiança | implementado (dados sintéticos); aguarda o merge do A |
-| **C** | F7 + F8 — Specialist Registry, dados e treino | depois do B e do DG-1 |
+| **A** | F3 + F4 — gateway, auditoria, shadow/advisory, avaliação e calibração | ✅ integrado (PR #3, dados sintéticos) |
+| **B** | F5 + F6 — LLM Gateway, System-1/System-2 e política de confiança | ✅ integrado (PR #3, dados sintéticos) |
+| **C** | F7 + F8 — Specialist Registry, dados e treino, rascunho do DG-1 | implementado (código e testes com stubs); treino real 🔒 GPU e DG-1 |
 | **D** | F9–F20 selecionadas — guardrails, MCP, RAG, observabilidade, Docker/implantação, benchmarks, segurança, RC | por necessidade |
 
 Cada bloco segue o fluxo implementar → testes focados → validação única → Draft PR → CI → revisão → merge, e
@@ -181,10 +181,19 @@ versionada e testes de redação e expurgo.
   para a F8); `/api/v1/route` completo. **Ajuste de escopo:** a escolha automática do tier pelo preset
   `router_questions` do upstream ficou para quando houver mais de um tier em uso; hoje o tier é fixo por spec.
 
-### F7 — Specialist Registry
+### F7 — Specialist Registry — Bloco C ✅
 - Manifestos, armazenamento de artefatos com sha256, máquina de estados de promoção com portões objetivos,
   `SpecialistSelector`, rollback por ponteiro.
 - **Saída:** um checkpoint externo pode ser registrado, colocado em shadow e revertido sem deploy.
+- **Entregue no Bloco C** (`DEVELOPMENT.md` §5.6): manifesto do especialista (fonte, revisão e sha256 por arquivo
+  passados ao `laya.load` do upstream, que verifica os pesos); estados `experimental → shadow → candidate →
+  production → deprecated` no banco, com eventos e autor; portões objetivos (relatório de avaliação deste spec e
+  deste especialista, mínimos de acurácia/ECE, sem regressão contra o baseline no mesmo dataset; amostras, falhas e
+  concordância do shadow); ponteiros `production`/`shadow` por spec; rollback sem deploy (CLI e
+  `POST /api/v1/specialists/rollback`). O gateway serve o especialista de produção e roda o de shadow como
+  challenger **depois** da resposta, registrando a concordância; falha ao carregar nunca bloqueia (volta ao Router
+  e aparece em `/ready`). **Ajuste de escopo:** o armazenamento de artefatos é o do próprio upstream (Hub privado
+  ou diretório com sha256 no manifesto); nada de storage próprio.
 
 ### F8 — Pipeline de dados e treino  *(M4)*
 - Pré-requisito: gate DG-1 aprovado (dados reais e envio a LLM professor).
@@ -196,6 +205,15 @@ versionada e testes de redação e expurgo.
   Colab, Kaggle e local.
 - Calibração → avaliação held-out → registro como `experimental`.
 - **Saída:** um especialista treinado a partir dos dados de shadow, comparado com o genérico nas mesmas métricas.
+- **Entregue no Bloco C** (código; o treino real 🔒 GPU e DG-1): `dataset candidates` (amostragem ativa pela
+  auditoria: incertos, discordantes, escalados), `dataset build` (junta a exportação do sistema de origem aos
+  rótulos da plataforma pelo HMAC, deduplica, mascara PII, marca `label_source`), `dataset split` (por grupo ou por
+  tempo, com `manifest.json` e sha256), `dataset label` (professor LLM com votos e distribuição), `train` (a
+  **receita do próprio upstream**, fixada por commit e sha256 e importada sem cópia; nós só montamos os itens e o
+  manifesto) e `eval --specialist`. **Ajustes de escopo:** a ingestão é JSONL exportado pelo sistema de origem
+  (CSV/XLSX/Parquet/PostgreSQL ficam para quando houver fonte concreta); sem DDP nem notebooks próprios, porque a
+  receita do upstream já roda em CUDA/MPS/CPU; o dataset público `LocalLLaMA/typed-decisions` pode ser misturado
+  (`train --extra-upstream`) depois de confirmada a licença.
 
 ### F9 — Guardrails
 - Input/Decision/Action/Output conforme `ARCHITECTURE_PROPOSAL.md` §6.7; detectores de PII brasileira; catálogo de
@@ -278,10 +296,11 @@ versionada e testes de redação e expurgo.
 
 ## 5. Próximo passo
 
-Integrar o **Bloco A** (PR #3) e, em seguida, abrir o PR do **Bloco B** (F5 + F6), já implementado. Antes de
-dados reais, aprovar o gate DG-1; o próximo bloco é o **C** (F7 + F8).
-Rodar uma vez a suíte com pesos numa máquina com acesso ao Hugging Face e gravar o baseline dos golden tests
-(`DEVELOPMENT.md` §8). O nome `laya_platform` continua provisório.
+Revisar e integrar o **Bloco C** (F7 + F8). Em paralelo, decidir os itens ☐ de `docs/DATA_GOVERNANCE.md` e
+aprovar o DG-1: só então entram dados reais, o primeiro dataset do domínio e o primeiro treino numa GPU
+(`DEVELOPMENT.md` §5.6). Rodar uma vez a suíte com pesos numa máquina com acesso ao Hugging Face e gravar o
+baseline dos golden tests (`DEVELOPMENT.md` §8). O próximo bloco é o **D**, escolhido pelas lacunas de
+`docs/VALUE_AND_GAPS.md` §6. O nome `laya_platform` continua provisório.
 
 Melhoria registrada para o procedimento de atualização do upstream: um portão que detecte mudança no corpo/AST de
 `Agent._check_question` e obrigue a revisar o espelho `validate_question` da `DecisionSpec`.

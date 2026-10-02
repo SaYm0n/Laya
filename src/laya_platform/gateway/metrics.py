@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from prometheus_client import CollectorRegistry, Counter, Histogram, generate_latest
+from collections.abc import Callable
+from datetime import UTC, datetime
+
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 
 from laya_platform.llm import LLMCall
 
@@ -98,6 +101,55 @@ class GatewayMetrics:
             ["tier"],
             registry=self.registry,
         )
+
+        self.system2_agreement = Counter(
+            "laya_platform_system2_agreement",
+            "System-1 answers compared with System-2's on escalated decisions",
+            ["spec", "question", "agree"],
+            registry=self.registry,
+        )
+        self.served_by = Counter(
+            "laya_platform_served_by",
+            "Decisions per System-1 engine (router or specialist name@version)",
+            ["spec", "engine"],
+            registry=self.registry,
+        )
+        self.challenger = Counter(
+            "laya_platform_challenger_agreement",
+            "Shadow specialist answers compared with what was served",
+            ["spec", "specialist", "question", "agree"],
+            registry=self.registry,
+        )
+        self.challenger_errors = Counter(
+            "laya_platform_challenger_errors",
+            "Shadow specialist runs that failed",
+            ["spec", "specialist"],
+            registry=self.registry,
+        )
+        self.reviews_open = Gauge(
+            "laya_platform_reviews_open",
+            "Review items waiting for a human",
+            registry=self.registry,
+        )
+        self.reviews_oldest = Gauge(
+            "laya_platform_reviews_oldest_age_seconds",
+            "Age of the oldest open review item (0 when none)",
+            registry=self.registry,
+        )
+
+    def watch_reviews(self, stats: Callable[[], tuple[int, datetime | None]]) -> None:
+        """Read the review queue at every scrape."""
+
+        def oldest_age() -> float:
+            oldest = stats()[1]
+            if oldest is None:
+                return 0.0
+            if oldest.tzinfo is None:  # SQLite hands timestamps back naive (they are UTC)
+                oldest = oldest.replace(tzinfo=UTC)
+            return (datetime.now(UTC) - oldest).total_seconds()
+
+        self.reviews_open.set_function(lambda: float(stats()[0]))
+        self.reviews_oldest.set_function(oldest_age)
 
     def observe_llm(self, call: LLMCall) -> None:
         self.llm_calls.labels(call.tier, call.outcome).inc()
