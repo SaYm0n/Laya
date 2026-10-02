@@ -55,8 +55,10 @@
 | `POST /api/v1/decide` | ❌ | ❌ | ✅ Blocos A + B | DecisionSpec → valores tipados, veredito da política, System-2 ou fila humana; `act` só em `gated`, banda `auto`, dentro do canário |
 | `POST /api/v1/route` | ❌ | ❌ | ✅ Bloco B | com `spec`: quem responderia (Laya, tier de LLM ou humano), sem auditoria nem chamada de LLM; sem `spec`: a rota do Router |
 | `GET /api/v1/reviews`, `POST /api/v1/reviews/{id}/resolve` | ❌ | ❌ | ✅ Bloco B | fila de revisão humana (escopo `review`); sem o texto de entrada |
-| `GET /api/v1/specs`, `GET`/`PUT /api/v1/flags` | ❌ | ❌ | ✅ Bloco A | specs e modo efetivo; kill switch e modo por spec |
-| `/api/v1/models`, `/api/v1/specialists`, `/api/v1/evaluations`, `/api/v1/router`, `/api/v1/audit` | ❌ | ❌ | 🆕 | administração |
+| `GET /api/v1/specs`, `GET`/`PUT /api/v1/flags` | ❌ | ❌ | ✅ Bloco A (autor da mudança: Bloco C) | specs e modo efetivo; kill switch e modo por spec |
+| `GET /api/v1/flags/events` | ❌ | ❌ | ✅ Bloco C | histórico das mudanças de flag, com autor |
+| `GET /api/v1/specialists`, `POST /api/v1/specialists/rollback` | ❌ | ❌ | ✅ Bloco C | versões, estados e ponteiros; rollback sem deploy (escopo `admin`) |
+| `/api/v1/models`, `/api/v1/evaluations`, `/api/v1/router`, `/api/v1/audit` | ❌ | ❌ | 🆕 | administração |
 
 > O plano original listava `/v1/decide` e `/v1/route` como "endpoints base". Eles **não existem** no upstream
 > nem no Jev; por isso ficam em `/api/v1/` (ver `ARCHITECTURE_PROPOSAL.md` §12).
@@ -131,6 +133,7 @@ A plataforma usa os nomes do `laya` diretamente e nunca os sombreia. Contratos v
 | `laya.__all__` | 51 nomes em 0.3.23 | snapshot congelado no teste |
 | Funções de treino **públicas** (`proper_reward`, `render_options`, `QTYPES`, `QTYPE_NAMES`, `td_lambda_targets`) | exportadas em `laya.__all__` | ✅ upstream (a matriz da F0 as listava como internas) |
 | **APIs internas** (`laya.common.build_model`, `build_sequence`, `collate_items`; `laya.agent._fix_tokenizer_config`, `Agent._check_question`) | não são API pública | 🧩 acessadas **somente** por `laya_platform.core.upstream_compat` (registro `INTERNAL_APIS`); assinaturas congeladas em `test_training_internals_contract.py` |
+| **Receita de fine-tune** do repositório (`notebooks/laya_finetune_typed_decisions_mps.py`: `prepare_model`, `build_training_item`, `train`) | fora do wheel | 🧩 importada sem cópia por `upstream_compat.load_script`, fixada por commit e sha256 (`FINETUNE_SCRIPT`); conferida em `test_upstream_recipe_contract.py` |
 
 ## 5. CLI
 
@@ -140,7 +143,7 @@ A plataforma usa os nomes do `laya` diretamente e nunca os sombreia. Contratos v
 | `laya-serve` | ✅ | substituído pelo gateway em produção; continua disponível |
 | `laya-evals validate/run/compare` | ✅ | ✅ + `laya-platform eval` com métricas extras |
 | `laya-mcp-server` | ✅ | ✅ + `laya-platform mcp-admin` |
-| `laya-platform ...` | — | 🆕 (registry, dataset, treino, calibração, promoção) |
+| `laya-platform ...` | — | ✅ `serve`, `db upgrade\|purge\|forget`, `eval [--specialist]`, `bands`, `calibrate`, `hash-key`, `dataset candidates\|build\|split\|label`, `train`, `specialist register\|list\|shadow\|candidate\|promote\|rollback\|deprecate` |
 
 ## 6. MCP
 
@@ -183,8 +186,8 @@ A plataforma usa os nomes do `laya` diretamente e nunca os sombreia. Contratos v
 | checkpoint | carregável hoje | seleção automática no upstream | plataforma |
 |---|---|---|---|
 | `english`, `multilingual`, `typed-decisions` | ✅ | ✅ (Router) | ✅ via Router |
-| checkpoint próprio (HF privado ou diretório local) | ✅ `laya.load(path)` | ❌ (Router aceita só 3 nomes) | 🆕 `SpecialistRegistry` + `SpecialistSelector` |
-| calibração externa (`calibration=path`) | ✅ | — | ✅ versionada no registry |
+| checkpoint próprio (HF privado ou diretório local) | ✅ `laya.load(path, revision, expected_sha256)` | ❌ (Router aceita só 3 nomes) | ✅ Bloco C: `SpecialistRegistry` + `SpecialistSelector` (o manifesto passa `revision` e `expected_sha256` ao `laya.load`; sem controles de roteamento) |
+| calibração externa (`calibration=path`) | ✅ | — | ✅ referenciada no manifesto do especialista |
 
 ## 10. Provedores LLM (System-2) — sem equivalente no upstream
 
@@ -223,6 +226,7 @@ instalado (workflow Full install), sem pesos; **pesos** = `--run-weights`, fora 
 | `test_gateway_contract.py` | sem pesos | o gateway sobre um Router real: `/v1/systemone` e `/health` respondem pelo gateway exatamente como pelo app do upstream sozinho; recusas e `LAYA_API_KEY` do upstream inalteradas; `/api/v1/decide` usa o `engine.checkpoint` do spec; engine remota não monta o app |
 | `test_mcp_tools_contract.py` | sem pesos | as 8 ferramentas do servidor MCP do upstream, argumentos, tipos e obrigatórios; nenhuma ferramenta `platform_*` |
 | `test_training_internals_contract.py` | sem pesos + `torch` | os internos auditados existem com a mesma assinatura e o registro do `upstream_compat` nomeia exatamente esses; resolvem de fato onde há torch |
+| `test_upstream_recipe_contract.py` | rede (`--run-network`) + `torch` | o arquivo fixado da receita de fine-tune é o que o upstream serve no commit fixado e tem `prepare_model`, `build_training_item` e `train` com as assinaturas que `laya_platform.training.finetune` chama |
 | `test_primitives_shape.py` | pesos | forma real de `choice`/`score`/`noul`, `labels`, `option_order` |
 | `test_usage.py` | pesos | `usage` real: tokens, truncamento, opções colapsadas |
 | `test_routing_block.py` | pesos | o bloco `routing` é a rota que respondeu (também pelo app HTTP) |

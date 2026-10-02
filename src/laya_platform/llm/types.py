@@ -48,6 +48,8 @@ class LLMCall:
     cost: float = 0.0
     latency_ms: float = 0.0
     error: str | None = None
+    #: PII placeholders put in the state before it was sent (``laya_platform.privacy``).
+    redacted: int = 0
 
 
 class LLMError(Exception):

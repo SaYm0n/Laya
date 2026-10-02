@@ -7,7 +7,7 @@ of that kind is configured.
 from laya_platform.llm.config import CircuitConfig, LLMSettings, ProviderConfig, TierConfig
 from laya_platform.llm.decisions import DecisionPrompt, decision_prompt, parse_reply
 from laya_platform.llm.fake import FakeProvider
-from laya_platform.llm.gateway import LLMGateway, build_provider
+from laya_platform.llm.gateway import LLMGateway, MemorySpend, SpendStore, build_provider
 from laya_platform.llm.types import (
     Completion,
     LLMCall,
@@ -33,7 +33,9 @@ __all__ = [
     "LLMRefusalError",
     "LLMSettings",
     "LLMUnavailableError",
+    "MemorySpend",
     "ProviderConfig",
+    "SpendStore",
     "TierConfig",
     "build_provider",
     "decision_prompt",

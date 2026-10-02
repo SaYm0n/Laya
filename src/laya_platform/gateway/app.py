@@ -31,10 +31,9 @@ import json
 import time
 import uuid
 from collections.abc import Callable
-from hashlib import sha256
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from laya.serve import MAX_BODY_BYTES, MAX_STATE_CHARS
 from laya.serve import create_app as create_upstream_app
@@ -51,7 +50,14 @@ from laya_platform.gateway.metrics import GatewayMetrics
 from laya_platform.gateway.settings import GatewaySettings, Scope, hash_key
 from laya_platform.gateway.specs import SpecStore
 from laya_platform.llm import LLMCall, LLMError, LLMGateway
-from laya_platform.storage import AuditEvent, Database, ReviewItem
+from laya_platform.privacy import input_hmac
+from laya_platform.registry import (
+    Choice,
+    RegistryError,
+    SpecialistRegistry,
+    SpecialistSelector,
+)
+from laya_platform.storage import AuditEvent, ChallengerResult, Database, ReviewItem
 
 KILL_SWITCH = "kill_switch"
 MODE_FLAG = "mode:"
@@ -83,6 +89,13 @@ class FlagUpdate(BaseModel):
     value: Any = None
 
 
+class Rollback(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    spec: str
+    reason: str
+
+
 class Resolution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -93,11 +106,6 @@ class Resolution(BaseModel):
 def state_length(state: Any) -> int:
     """The state's length as ``laya.serve`` measures it: the text that will be tokenized."""
     return len(state) if isinstance(state, str) else len(json.dumps(state, ensure_ascii=False))
-
-
-def input_hmac(key: bytes, state: Any) -> str:
-    canonical = json.dumps(state, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hmac.new(key, canonical.encode("utf-8"), sha256).hexdigest()
 
 
 def call_record(call: LLMCall) -> dict[str, Any]:
@@ -142,21 +150,26 @@ def create_app(
     engine: DecisionEngine | None = None,
     database: Database | None = None,
     llm: LLMGateway | None = None,
+    specialists: SpecialistSelector | None = None,
 ) -> FastAPI:
     engine = engine if engine is not None else settings.engine.build()
     database = database if database is not None else Database(settings.database_url)
     if llm is None and settings.llm is not None:
-        llm = LLMGateway(settings.llm)
+        llm = LLMGateway(settings.llm, spend=database)  # one daily budget for every process
     database.upgrade()
+    registry = SpecialistRegistry(database)
+    selector = specialists or SpecialistSelector(registry, engine)
     specs = SpecStore.load(settings.specs_dir, over_http=isinstance(engine, RemoteEngine))
     _check_escalation_tiers(specs, llm)
     metrics = GatewayMetrics()
+    metrics.watch_reviews(database.review_stats)
     hmac_key = settings.hmac_key.get_secret_value().encode("utf-8")
     keys = {key.sha256: key for key in settings.api_keys}
 
     app = FastAPI(title="laya-platform gateway", version=__version__)
     app.state.engine, app.state.database, app.state.specs = engine, database, specs
     app.state.metrics, app.state.settings, app.state.llm = metrics, settings, llm
+    app.state.specialists = selector
 
     def require(scope: Scope) -> Callable[..., None]:
         def check(request: Request, authorization: Annotated[str | None, Header()] = None) -> None:
@@ -198,6 +211,31 @@ def create_app(
         metrics.observe_llm(call)
         return values, {**call_record(call), "values": values}
 
+    def run_challenger(
+        spec: DecisionSpec, state: Any, challenger: Choice, served: dict[str, Any], trace_id: str
+    ) -> None:
+        """A shadow specialist answers the same decision after the response has gone."""
+        result = ChallengerResult(
+            trace_id=trace_id,
+            spec_id=spec.id,
+            name=challenger.label.split("@")[0],
+            version=challenger.label.split("@", 1)[1],
+            latency_ms=0.0,
+        )
+        started = time.perf_counter()
+        try:
+            payload = challenger.engine.predict(state, spec.to_questions())
+            values = spec_values(spec, payload.get("answers", {}))
+            result.values = values
+            result.agreement = {q: values.get(q) == v for q, v in served.items() if q in values}
+            for qid, agree in result.agreement.items():
+                metrics.challenger.labels(spec.id, challenger.label, qid, str(agree).lower()).inc()
+        except Exception as exc:  # noqa: BLE001 -- a challenger never affects the decision
+            result.error = f"{type(exc).__name__}: {exc}"
+            metrics.challenger_errors.labels(spec.id, challenger.label).inc()
+        result.latency_ms = (time.perf_counter() - started) * 1000.0
+        database.record_challenger(result)
+
     @app.middleware("http")
     async def limit_body(request: Request, call_next: Any) -> Any:
         if request.url.path.startswith("/api/"):
@@ -207,7 +245,7 @@ def create_app(
         return await call_next(request)
 
     @app.post("/api/v1/decide", dependencies=[Depends(require("decide"))])
-    def decide(body: DecideRequest) -> dict[str, Any]:
+    def decide(body: DecideRequest, background: BackgroundTasks) -> dict[str, Any]:
         spec = specs.get(body.spec)
         if spec is None:
             raise HTTPException(404, f"unknown DecisionSpec {body.spec!r}")
@@ -227,9 +265,13 @@ def create_app(
             incumbent=body.incumbent,
             data_classification=settings.data_classification,
         )
+        served = selector.served(spec.id)
+        event.engine = served.label
+        # A specialist is one checkpoint: the Router's controls (model, task, lang) do not apply.
+        controls = {} if served.is_specialist else spec.predict_controls()
         started = time.perf_counter()
         try:
-            payload = engine.predict(body.state, spec.to_questions(), **spec.predict_controls())
+            payload = served.engine.predict(body.state, spec.to_questions(), **controls)
         except ValueError as exc:
             _fail(event, started, f"{type(exc).__name__}: {exc}")
             raise HTTPException(422, str(exc)) from None
@@ -277,6 +319,10 @@ def create_app(
                 answered, system2 = ask_system2(spec, tier, body.state)
                 if answered is not None:
                     suggested, source = answered, "system2"
+                    agree = {q: values.get(q) == v for q, v in answered.items() if q in values}
+                    system2["agreement"] = agree
+                    for qid, same in agree.items():
+                        metrics.system2_agreement.labels(spec.id, qid, str(same).lower()).inc()
             if mode == "gated" and source == "system1":
                 review_id = _queue(database, event, spec, verdict, values, system2)
                 metrics.reviews.labels(spec.id).inc()
@@ -289,6 +335,10 @@ def create_app(
         event.act, event.system2 = act, system2
         database.record(event)
         metrics.decisions.labels(spec.id, mode).inc()
+        metrics.served_by.labels(spec.id, served.label).inc()
+        challenger = selector.challenger(spec.id)
+        if challenger is not None and challenger.label != served.label:
+            background.add_task(run_challenger, spec, body.state, challenger, values, trace_id)
         metrics.latency.labels(spec.id).observe(elapsed)
         if verdict is not None:
             metrics.outcomes.labels(spec.id, mode, verdict.outcome).inc()
@@ -333,9 +383,10 @@ def create_app(
         if state_length(body.state) > MAX_STATE_CHARS:
             raise HTTPException(413, f"state too large (> {MAX_STATE_CHARS} chars)")
         # A dry run of System-1 and the policy: nothing is audited, queued or sent to an LLM.
-        controls = {**spec.predict_controls(), **hints}
+        served = selector.served(spec.id)
+        controls = {} if served.is_specialist else {**spec.predict_controls(), **hints}
         try:
-            payload = engine.predict(body.state, spec.to_questions(), **controls)
+            payload = served.engine.predict(body.state, spec.to_questions(), **controls)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         verdict = evaluate(spec, payload, spec_values(spec, payload.get("answers", {})))
@@ -351,6 +402,7 @@ def create_app(
             "outcome": verdict.outcome if verdict else None,
             "reasons": verdict.reasons if verdict else [],
             "tier": tier if system == "llm" else None,
+            "engine": served.label,
             "routing": payload.get("routing"),
         }
 
@@ -385,6 +437,7 @@ def create_app(
             "specs": len(specs),
             "engine": type(engine).__name__,
             "llm_tiers": llm.tiers if llm is not None else [],
+            "specialist_errors": dict(selector.load_errors),
         }
         ok = bool(checks["database"]) and len(specs) > 0
         return JSONResponse({"ready": ok, "checks": checks}, status_code=200 if ok else 503)
@@ -414,8 +467,15 @@ def create_app(
     def get_flags() -> dict[str, Any]:
         return database.flags()
 
+    @app.get("/api/v1/flags/events", dependencies=[Depends(require("admin"))])
+    def get_flag_events(limit: int = 100) -> list[dict[str, Any]]:
+        return [
+            {"at": e.at.isoformat(), "name": e.name, "old": e.old, "new": e.new, "actor": e.actor}
+            for e in database.flag_events(max(1, min(limit, 500)))
+        ]
+
     @app.put("/api/v1/flags/{name}", dependencies=[Depends(require("admin"))])
-    def put_flag(name: str, body: FlagUpdate) -> dict[str, Any]:
+    def put_flag(name: str, body: FlagUpdate, request: Request) -> dict[str, Any]:
         spec = specs.get(name.removeprefix(MODE_FLAG)) if name.startswith(MODE_FLAG) else None
         if name == KILL_SWITCH:
             if body.value is not None and not isinstance(body.value, bool):
@@ -427,8 +487,29 @@ def create_app(
                 raise HTTPException(422, f"{spec.id} cannot run gated: it {problem}")
         else:
             raise HTTPException(404, f"unknown flag {name!r}")
-        database.set_flag(name, body.value)
+        database.set_flag(name, body.value, actor=str(request.state.caller))
         return database.flags()
+
+    @app.get("/api/v1/specialists", dependencies=[Depends(require("admin"))])
+    def list_specialists() -> dict[str, Any]:
+        pointers = {
+            spec_id: {role: p.key for role, p in roles.items()}
+            for spec_id, roles in registry.pointers().items()
+        }
+        return {
+            "versions": registry.versions(),
+            "pointers": pointers,
+            "load_errors": dict(selector.load_errors),
+        }
+
+    @app.post("/api/v1/specialists/rollback", dependencies=[Depends(require("admin"))])
+    def rollback(body: Rollback, request: Request) -> dict[str, Any]:
+        try:
+            restored = registry.rollback(body.spec, str(request.state.caller), body.reason)
+        except RegistryError as exc:
+            raise HTTPException(409, str(exc)) from None
+        selector.refresh()
+        return {"spec": body.spec, "production": restored.key if restored else "router"}
 
     if isinstance(engine, UpstreamRouterEngine):
         # Last, so the platform's routes win and everything else reaches the upstream app.

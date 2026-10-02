@@ -73,6 +73,10 @@ class LLMSettings(BaseModel):
     #: Spend cap per UTC day, in the currency of the tier prices; unset means no cap.
     daily_budget: Annotated[float, Field(ge=0.0)] | None = None
     circuit: CircuitConfig = Field(default_factory=CircuitConfig)
+    #: Redact PII (``laya_platform.privacy``) before a state goes to an external provider; and,
+    #: with ``redact_local``, to local ones too.
+    redact_pii: bool = True
+    redact_local: bool = False
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:

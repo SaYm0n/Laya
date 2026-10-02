@@ -103,6 +103,10 @@ basta `uv sync --locked --all-extras`.
 | escolher bandas por custo | `uv run laya-platform bands --report reports/x/report.json --error-cost 5 --review-cost 1` |
 | ajustar temperaturas (torch + pesos) | `uv run laya-platform calibrate --spec S.yaml --data cal.jsonl --model <checkpoint> --out cal.json` |
 | hash de uma chave de API | `uv run laya-platform hash-key --generate` (ou a chave via stdin) |
+| expurgo por retenção / exclusão do titular | `uv run laya-platform db purge --url URL --older-than-days 180` / `db forget --url URL --hmac H` (§5.6) |
+| dados para especialistas | `uv run laya-platform dataset candidates\|build\|split\|label ...` (§5.6) |
+| treinar um especialista (perfil completo + GPU) | `uv run laya-platform train --spec S.yaml --data train.jsonl ...` (§5.6) |
+| ciclo de vida de um especialista | `uv run laya-platform specialist register\|list\|shadow\|candidate\|promote\|rollback\|deprecate ...` (§5.6) |
 
 ## 4. Categorias de teste
 
@@ -240,7 +244,9 @@ alteração** — `/v1/systemone[/batch]`, `/health` e a autenticação `LAYA_AP
 | `GET /ready` | — | banco, specs e engine utilizáveis (503 se não) |
 | `GET /metrics` | `metrics` | Prometheus: decisões, erros, latência, `answer_confidence`, bandas, concordância |
 | `GET /api/v1/specs` | `admin` | specs carregados e o modo efetivo |
-| `GET`/`PUT /api/v1/flags[/{nome}]` | `admin` | `kill_switch` e `mode:<spec>` sem deploy |
+| `GET`/`PUT /api/v1/flags[/{nome}]` | `admin` | `kill_switch` e `mode:<spec>` sem deploy; cada mudança registra o autor |
+| `GET /api/v1/flags/events` | `admin` | histórico das mudanças de flag (quem, quando, de/para) |
+| `GET /api/v1/specialists`, `POST /api/v1/specialists/rollback` | `admin` | versões, ponteiros e rollback sem deploy (§5.6) |
 
 - Modos: `offline` → 409 (só avaliação); `shadow` decide e audita sem devolver sugestão; `advisory` devolve a
   sugestão (valores, respostas, bandas, `calibration_ref`). O kill switch põe todos os specs em `shadow`.
@@ -280,7 +286,8 @@ O código depende de **tiers**, nunca de IDs de modelo; IDs concretos só na con
 ```yaml
 llm:
   allow_external: false          # padrão: nada sai da sua infraestrutura; dados reais só com DG-1
-  daily_budget: 5.0              # na moeda dos preços abaixo; por processo, zera à meia-noite UTC
+  daily_budget: 5.0              # na moeda dos preços abaixo; somado no banco do gateway, zera à meia-noite UTC
+  redact_pii: true               # padrão: mascara PII antes de um provedor externo (§5.6)
   circuit: {failures: 5, cooldown_s: 60}
   providers:
     local: {kind: openai_compatible, base_url: "http://localhost:11434/v1", local: true}
@@ -334,13 +341,103 @@ policy:
 - Testes com provedores reais só com `--run-llm` e o modelo em variável de ambiente
   (`tests/unit/test_llm_live.py`); o CI nunca chama um LLM.
 
+### 5.6 Especialistas, dados, treino e DG-1 (Bloco C: F7+F8)
+
+**Specialist Registry** (`laya_platform.registry`). Um especialista é um checkpoint do Laya treinado para um ou mais
+specs, descrito por um manifesto (`specialist.yaml`, gerado pelo `train`):
+
+```yaml
+name: support.triage_pt          # minúsculas, pontos e sublinhados
+version: "3"
+base: multilingual               # checkpoint de partida
+source: /srv/models/triage_pt-3  # diretório ou repo do Hub (privado); os pesos nunca vão para o git
+revision: null                   # commit do Hub, quando source é um repo
+sha256: {model.safetensors: "…", rl_agent_config.json: "…"}   # verificados pelo laya.load do upstream
+calibration: null
+decision_specs: [support.triage]
+dataset: {train: …, manifest: {…}}   # manifest.json do `dataset split`
+training: {recipe: {commit: …, sha256: …}, items: …, epochs: …}
+```
+
+| estado | o que acontece | portão para entrar |
+|---|---|---|
+| `experimental` | só existe no registro | `specialist register` |
+| `shadow` | o gateway responde com o atual e roda este como **challenger** depois da resposta, gravando `challenger_results` e a concordância | relatório de `eval --specialist` **deste** especialista sobre **este** spec (mesmas perguntas), mínimos de acurácia e ECE, sem regressão contra o baseline no mesmo dataset (geral e por idioma) |
+| `candidate` | igual a `shadow` | amostras de shadow suficientes (padrão 200), taxa de falha ≤ 1%, concordância mínima |
+| `production` | responde no lugar do Router para os specs do manifesto | aprovador nomeado e motivo |
+| `deprecated` | fora de uso; continua no histórico | substituído, `deprecate` ou rollback |
+
+- Cada transição grava `specialist_events` (de/para, autor, motivo, evidência). Promover uma versão aposenta a
+  anterior e guarda o ponteiro de volta; `rollback` restaura a anterior ou devolve o spec ao Router, sem deploy
+  (`specialist rollback` ou `POST /api/v1/specialists/rollback`).
+- No gateway, o `SpecialistSelector` lê os ponteiros com cache de 5 s e mantém até 4 engines carregadas (LRU). Um
+  especialista que falha ao carregar **nunca** bloqueia: o Router responde e o erro aparece em `/ready`
+  (`specialist_errors`). Um especialista é um checkpoint único, então não recebe controles de roteamento. A
+  auditoria grava qual engine respondeu (`engine`).
+- Métricas: `laya_platform_served_by_total`, `laya_platform_challenger_agreement_total`,
+  `laya_platform_challenger_errors_total`, `laya_platform_system2_agreement_total` e as filas
+  `laya_platform_reviews_open` / `laya_platform_reviews_oldest_age_seconds`.
+
+**Dados** (`laya_platform.training.data`). A plataforma não guarda a entrada, então o dataset nasce da junção da
+exportação do sistema de origem com os rótulos da plataforma:
+
+1. `dataset candidates --db-url URL --spec-id ID` — o que mais vale rotular: discordâncias (com o sistema atual ou
+   com o System-2), depois `review`/`escalate`, depois a menor `answer_confidence`.
+2. O sistema de origem exporta `{"trace_id", "state", "group"?, "language"?, "tags"?}` (JSONL).
+3. `dataset build --db-url URL --spec S.yaml --inputs export.jsonl --out labelled.jsonl` — só aceita uma linha cujo
+   HMAC bate com o da decisão auditada (a chave vem de `LAYA_PLATFORM_HMAC_KEY`), deduplica, mascara PII (salvo
+   `--no-redact`, que exige DG-1) e marca `label_source`: `human` (fila de revisão) > `incumbent` (sistema atual)
+   > `teacher`.
+4. `dataset label --spec S.yaml --data D.jsonl --config gateway.yaml --tier deep --samples 3 --out D2.jsonl` —
+   opcional: o professor LLM responde N vezes e os votos viram distribuição (`gold`). Mantenha um subconjunto
+   humano como referência.
+5. `dataset split --spec S.yaml --data D.jsonl --out splits/ --by group|time` — train/validation/calibration/test
+   sem vazamento de grupo (ou por tempo), com `manifest.json` e sha256 de cada arquivo.
+
+**Treino** (`laya_platform.training.finetune`, perfil completo, GPU recomendada). Não há loop de treino próprio: o
+`train` importa a **receita do upstream** (`notebooks/laya_finetune_typed_decisions_mps.py`), fixada por commit e
+sha256 em `upstream_compat.FINETUNE_SCRIPT`; um arquivo diferente é recusado antes de qualquer import. A
+plataforma só converte as linhas do dataset nos itens da receita, chama `train()` e escreve o manifesto.
+
+```bash
+uv run laya-platform train --spec S.yaml --data splits/train.jsonl --dataset-manifest splits/manifest.json \
+  --base-dir <checkpoint base baixado> --base multilingual \
+  --upstream-dir upstream/ --fetch-upstream \
+  --out models/triage_pt-1 --name support.triage_pt --version 1 --owner "time de ML"
+uv run laya-platform eval --spec S.yaml --data splits/test.jsonl --specialist models/triage_pt-1/specialist.yaml \
+  --out reports/triage_pt-1
+uv run laya-platform specialist register --db-url URL --manifest models/triage_pt-1/specialist.yaml --actor ml
+uv run laya-platform specialist shadow --db-url URL --name support.triage_pt --version 1 --spec S.yaml \
+  --report reports/triage_pt-1/report.json --baseline reports/router/report.json --actor ml
+```
+
+- `--fetch-upstream` baixa o arquivo fixado de `raw.githubusercontent.com`; sem ele, use um clone do upstream.
+- `--extra-upstream public.jsonl` mistura linhas no formato do upstream (o dataset público
+  `LocalLLaMA/typed-decisions`, exportado com `datasets.load_dataset(...).to_json(...)`), para não esquecer o
+  conhecimento geral. **Antes**, confirme a licença do dataset e registre-a no DG-1 (§8 de `DATA_GOVERNANCE.md`);
+  o manifesto guarda o caminho e o sha256 do arquivo.
+- O CI testa o adaptador com uma receita falsa (sem torch) e o contrato da receita real
+  (`tests/compatibility/test_upstream_recipe_contract.py`, com rede e torch). O treino real, a calibração e o
+  shadow com dados reais só rodam fora do CI, depois do DG-1.
+
+**DG-1** (`docs/DATA_GOVERNANCE.md`, rascunho a aprovar). O que o código já garante:
+
+- **Redação de PII** (`laya_platform.privacy`): e-mail, CPF e CNPJ (inclusive alfanumérico, com dígitos
+  verificadores), cartão (Luhn) e telefone brasileiro com DDD viram `[CPF]`, `[EMAIL]`...; aplicada antes de
+  qualquer provedor externo (`llm.redact_pii`, padrão `true`; local só com `redact_local`) e no `dataset build`. A
+  contagem fica na auditoria.
+- **Retenção:** `db purge --older-than-days N` apaga auditoria, challengers e revisões **resolvidas** mais antigas;
+  não toca revisões abertas nem as trilhas de flags e especialistas.
+- **Exclusão do titular:** `db forget --hmac H` (ou `--hmac-file`) apaga as decisões dessas entradas.
+
 ## 6. Regras de arquitetura verificadas automaticamente
 
 | regra | verificação |
 |---|---|
 | A plataforma não importa runtimes de ML nem frameworks de IA (`torch`, `transformers`, `onnxruntime`, `anthropic`, `openai`, `google`, `langchain*`, `langgraph`, `llama_index`, `crewai`); única exceção: os SDKs `anthropic`/`openai` nos dois módulos de provedor do `laya_platform.llm` | `lint-imports` (contrato em `pyproject.toml`) |
-| `laya_platform.core` não importa gateway, store, avaliação, cliente, LLM nem FastAPI/SQLAlchemy/Alembic/Prometheus; camadas `cli` → `gateway` → `evaluation`/`client`/`llm` → `storage` → `core` | `lint-imports` |
-| Importar `laya_platform.llm` não carrega os SDKs (só quando um provedor daquele tipo é construído) | `tests/unit/test_architecture_imports.py` |
+| `laya_platform.core` não importa gateway, store, avaliação, cliente, LLM, registry, training, privacy nem FastAPI/SQLAlchemy/Alembic/Prometheus; camadas `cli` → `gateway` → `training` → `evaluation`/`client`/`llm`/`registry` → `privacy` → `storage` → `core` | `lint-imports` |
+| Importar `laya_platform.llm`, `registry` ou `training` não carrega SDKs, torch nem transformers (torch chega pela receita do upstream, só no `train`) | `tests/unit/test_architecture_imports.py` |
+| A receita de treino do upstream é usada sem cópia, fixada por commit e sha256 | `upstream_compat.FINETUNE_SCRIPT` + `tests/compatibility/test_upstream_recipe_contract.py` |
 | Importar `laya_platform.core` não carrega torch, onnxruntime, transformers, FastAPI, Starlette, uvicorn nem mcp | `tests/unit/test_architecture_imports.py` (interpretador novo) |
 | Internos do Laya (`laya.common`, `laya.agent`, `laya.calibrate`, `laya.fast`, `laya.tl_kernels`, `laya._*`, nomes privados) só via `laya_platform.core.upstream_compat`, inclusive por `importlib.import_module("...")` | `tests/unit/test_architecture_imports.py` |
 | O código da plataforma nunca lê o campo `confidence` (entropia) de uma resposta | `tests/compatibility/test_confidence_semantics.py` |
@@ -429,4 +526,7 @@ Localmente, o hook `no-commit-to-branch` do pre-commit impede commits diretos na
 - `.env.example` documenta variáveis sem nenhum valor secreto.
 - Os casos dos golden tests (`tests/compatibility/golden/decisions.json`) e o dataset de `examples/` são
   sintéticos e públicos. Relatórios de avaliação (`reports/`) e bancos (`*.db`) ficam fora do git.
-- Dados reais só entram na plataforma depois do gate DG-1 (`ARCHITECTURE_PROPOSAL.md` §6.15).
+- Dados reais só entram na plataforma depois do gate DG-1 (`ARCHITECTURE_PROPOSAL.md` §6.15), cujo rascunho, com
+  o que já é garantido e o que precisa de decisão, está em `docs/DATA_GOVERNANCE.md`.
+- Datasets (`dataset build`/`split`/`label`), checkpoints de especialistas e `specialist.yaml` com caminhos internos
+  ficam fora do git (`/datasets/`, `/models/`, `/outputs/`... no `.gitignore`).

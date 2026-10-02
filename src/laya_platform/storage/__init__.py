@@ -2,6 +2,30 @@
 ``gateway`` extra."""
 
 from laya_platform.storage.db import Database, alembic_config
-from laya_platform.storage.models import AuditEvent, Base, FeatureFlag, ReviewItem
+from laya_platform.storage.models import (
+    AuditEvent,
+    Base,
+    ChallengerResult,
+    FeatureFlag,
+    FlagEvent,
+    LLMSpend,
+    ReviewItem,
+    Specialist,
+    SpecialistEvent,
+    SpecialistPointer,
+)
 
-__all__ = ["AuditEvent", "Base", "Database", "FeatureFlag", "ReviewItem", "alembic_config"]
+__all__ = [
+    "AuditEvent",
+    "Base",
+    "ChallengerResult",
+    "Database",
+    "FeatureFlag",
+    "FlagEvent",
+    "LLMSpend",
+    "ReviewItem",
+    "Specialist",
+    "SpecialistEvent",
+    "SpecialistPointer",
+    "alembic_config",
+]

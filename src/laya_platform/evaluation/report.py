@@ -50,7 +50,7 @@ def build_report(
     identity = {
         "spec": spec.id,
         "spec_version": spec.version,
-        "questions_sha256": hashlib.sha256(_canonical(spec.to_questions()).encode()).hexdigest(),
+        "questions_sha256": spec.questions_sha256(),
         "dataset_sha256": file_fingerprint(str(dataset)),
         "laya_version": laya.__version__,
         "laya_platform_version": __version__,

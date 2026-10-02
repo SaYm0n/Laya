@@ -42,6 +42,7 @@ Recommended, never enforced: a ``description`` on every schema property (docs/UP
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import re
@@ -376,6 +377,17 @@ class DecisionSpec(_Frozen):
             return copy.deepcopy(self.questions)
         questions: Questions = questions_from_json_schema(self.json_schema)
         return questions
+
+    def questions_sha256(self) -> str:
+        """Digest of the questions this spec asks: what an evaluation report says it measured."""
+        canonical = json.dumps(
+            self.to_questions(),
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=str,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def predict_controls(self) -> PredictControls:
         """Controls implied by the spec's engine settings (``model`` when a checkpoint is set)."""

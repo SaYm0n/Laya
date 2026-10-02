@@ -134,6 +134,9 @@ def test_the_adapter_exists_and_is_the_only_exception() -> None:
         "laya_platform.gateway",  # the settings; the app itself needs the gateway extra
         "laya_platform.client",
         "laya_platform.llm",  # the SDKs load only when a provider of their kind is built
+        "laya_platform.privacy",
+        "laya_platform.registry",  # a specialist's weights load only when it is selected
+        "laya_platform.training",  # torch comes through the pinned upstream recipe, on demand
     ],
 )
 def test_importing_the_core_pulls_no_heavy_runtime(module: str) -> None:

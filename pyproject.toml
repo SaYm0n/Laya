@@ -112,6 +112,7 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]                       # assert is how pytest works
 "src/laya_platform/cli.py" = ["T201"]       # the CLI prints by design
+"src/laya_platform/cli_ops.py" = ["T201"]   # so do its Block C subcommands
 "scripts/**" = ["T201"]                     # CI scripts report to stdout
 
 [tool.ruff.format]
@@ -179,7 +180,10 @@ forbidden_modules = [
     "laya_platform.evaluation",
     "laya_platform.gateway",
     "laya_platform.llm",
+    "laya_platform.privacy",
+    "laya_platform.registry",
     "laya_platform.storage",
+    "laya_platform.training",
     "prometheus_client",
     "sqlalchemy",
     "starlette",
@@ -187,12 +191,14 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Layers: gateway over evaluation/client/llm, over the store and the core"
+name = "Layers: gateway over training over evaluation/client/llm/registry/privacy, store, core"
 type = "layers"
 layers = [
     "laya_platform.cli",
     "laya_platform.gateway",
-    "laya_platform.evaluation | laya_platform.client | laya_platform.llm",
+    "laya_platform.training",
+    "laya_platform.evaluation | laya_platform.client | laya_platform.llm | laya_platform.registry",
+    "laya_platform.privacy",
     "laya_platform.storage",
     "laya_platform.core",
 ]

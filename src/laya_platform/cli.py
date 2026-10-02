@@ -27,6 +27,7 @@ from typing import Any
 
 from laya_platform import __version__
 from laya_platform._upstream import UPSTREAM_DISTRIBUTION, UPSTREAM_VERSION
+from laya_platform.cli_ops import add_commands
 
 
 def installed_upstream_version() -> str | None:
@@ -97,14 +98,20 @@ def _eval(args: argparse.Namespace) -> int:
 
     spec = load_decision_spec(args.spec)
     examples = load_examples(args.data, spec)
-    config = _engine_config(args)
-    engine = config.build()
-    described = (
-        f"remote {config.remote_url}"
-        if config.kind == "remote"
-        else ("router " + json.dumps(config.router, sort_keys=True))
-    )
-    cases = evaluate(engine, spec, examples, batch_size=args.batch_size)
+    if args.specialist:
+        from laya_platform.registry import engine_label, load_manifest, load_specialist
+
+        manifest = load_manifest(args.specialist)
+        engine, described, routed = load_specialist(manifest), engine_label(manifest), False
+    else:
+        config = _engine_config(args)
+        engine, routed = config.build(), True
+        described = (
+            f"remote {config.remote_url}"
+            if config.kind == "remote"
+            else ("router " + json.dumps(config.router, sort_keys=True))
+        )
+    cases = evaluate(engine, spec, examples, batch_size=args.batch_size, routed=routed)
     report = build_report(spec, cases, dataset=args.data, engine=described)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -192,6 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--engine-config", help="YAML with an 'engine' block (default Router)")
     evaluate.add_argument("--remote-url", help="evaluate a remote /v1/systemone endpoint")
     evaluate.add_argument("--remote-api-key-env", help="env var holding the remote's API key")
+    evaluate.add_argument("--specialist", help="evaluate a specialist (manifest YAML/JSON)")
     evaluate.add_argument("--batch-size", type=int, default=16)
     evaluate.set_defaults(handler=_eval)
 
@@ -216,6 +224,7 @@ def build_parser() -> argparse.ArgumentParser:
     keys = commands.add_parser("hash-key", help="SHA-256 of an API key read from stdin")
     keys.add_argument("--generate", action="store_true", help="make a new key and print both")
     keys.set_defaults(handler=_hash_key)
+    add_commands(commands, db)
     return parser
 
 
@@ -228,6 +237,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     try:
         return handler(args)
-    except (ValueError, OSError) as exc:  # DecisionSpecError and DatasetError are ValueErrors
+    # Most errors here are ValueErrors; a missing optional runtime is a MissingRuntimeError, an
+    # ImportError (importing laya_platform.core here would load the upstream for every command).
+    except (ValueError, OSError, ImportError) as exc:
         print(f"laya-platform: error: {exc}", file=sys.stderr)
         return 1
