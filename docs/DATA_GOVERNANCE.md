@@ -1,5 +1,7 @@
 # Governança de dados — Gate DG-1
 
+> **Público:** responsável pelo tratamento, DPO e operação · **Status:** rascunho · **Atualizado:** 2026-10-02
+
 > **Status: RASCUNHO, aguardando aprovação.** Enquanto este documento não estiver aprovado pelo responsável
 > pelo tratamento (§12), **nenhum dado real** entra na plataforma: nem shadow, nem avaliação sobre exportações
 > reais, nem datasets, nem envio a LLM. O gateway já recusa iniciar com `data_classification: real` sem

@@ -1,8 +1,11 @@
-# Proposta de arquitetura — Laya Decision Platform
+# Proposta de arquitetura — Mars Decision Platform
+
+> **Público:** quem desenvolve · **Status:** referência da Fase 0 · **Atualizado:** 2026-10-03
 
 > Fase 0. Arquitetura-alvo baseada no que o upstream `laya==0.3.23` realmente oferece
 > (ver `UPSTREAM_ANALYSIS.md`). Onde esta proposta diverge do plano original, a seção 12 explica o motivo.
-> Nome do projeto e do pacote ainda são **provisórios** (seção 13).
+> O produto se chama **Mars Decision Platform** (decidido em 2026-10-03; veja a [marca](assets/brand/README.md)).
+> O pacote `laya_platform` e a CLI `laya-platform` mantêm os nomes atuais até uma troca própria.
 
 ## 1. Objetivo
 

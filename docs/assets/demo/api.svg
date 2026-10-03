@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="413" viewBox="0 0 720 413" role="img" aria-label="API do gateway · rotas">
+<title>API do gateway · rotas</title>
+<rect width="720" height="413" rx="14" fill="#0B1020"/>
+<rect x="0.5" y="0.5" width="719" height="412" rx="14" fill="none" stroke="#1E293B"/>
+<path d="M0 44 H720" stroke="#1E293B"/><circle cx="22" cy="22" r="6" fill="#F87171"/><circle cx="42" cy="22" r="6" fill="#FBBF24"/><circle cx="62" cy="22" r="6" fill="#34D399"/>
+<text x="360.0" y="27" text-anchor="middle" fill="#94A3B8" font-size="13" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">API do gateway · rotas</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14">
+<text x="24" y="66" xml:space="preserve"><tspan fill="#86EFAC">POST  </tspan><tspan fill="#E2E8F0">/api/v1/decide                            </tspan><tspan fill="#64748B">Decide</tspan></text>
+<text x="24" y="87" xml:space="preserve"><tspan fill="#86EFAC">POST  </tspan><tspan fill="#E2E8F0">/api/v1/route                             </tspan><tspan fill="#64748B">Route</tspan></text>
+<text x="24" y="108" xml:space="preserve"><tspan fill="#86EFAC">GET   </tspan><tspan fill="#E2E8F0">/api/v1/reviews                           </tspan><tspan fill="#64748B">List Reviews</tspan></text>
+<text x="24" y="129" xml:space="preserve"><tspan fill="#86EFAC">POST  </tspan><tspan fill="#E2E8F0">/api/v1/reviews/{review_id}/resolve       </tspan><tspan fill="#64748B">Resolve Review</tspan></text>
+<text x="24" y="150" xml:space="preserve"><tspan fill="#86EFAC">GET   </tspan><tspan fill="#E2E8F0">/ready                                    </tspan><tspan fill="#64748B">Ready</tspan></text>
+<text x="24" y="171" xml:space="preserve"><tspan fill="#86EFAC">GET   </tspan><tspan fill="#E2E8F0">/metrics                                  </tspan><tspan fill="#64748B">Prometheus</tspan></text>
+<text x="24" y="192" xml:space="preserve"><tspan fill="#86EFAC">GET   </tspan><tspan fill="#E2E8F0">/api/v1/specs                             </tspan><tspan fill="#64748B">List Specs</tspan></text>
+<text x="24" y="213" xml:space="preserve"><tspan fill="#86EFAC">GET   </tspan><tspan fill="#E2E8F0">/api/v1/flags                             </tspan><tspan fill="#64748B">Get Flags</tspan></text>
+<text x="24" y="234" xml:space="preserve"><tspan fill="#86EFAC">GET   </tspan><tspan fill="#E2E8F0">/api/v1/flags/events                      </tspan><tspan fill="#64748B">Get Flag Events</tspan></text>
+<text x="24" y="255" xml:space="preserve"><tspan fill="#86EFAC">PUT   </tspan><tspan fill="#E2E8F0">/api/v1/flags/{name}                      </tspan><tspan fill="#64748B">Put Flag</tspan></text>
+<text x="24" y="276" xml:space="preserve"><tspan fill="#86EFAC">GET   </tspan><tspan fill="#E2E8F0">/api/v1/specialists                       </tspan><tspan fill="#64748B">List Specialists</tspan></text>
+<text x="24" y="297" xml:space="preserve"><tspan fill="#86EFAC">POST  </tspan><tspan fill="#E2E8F0">/api/v1/specialists/rollback              </tspan><tspan fill="#64748B">Rollback</tspan></text>
+<text x="24" y="318" xml:space="preserve"></text>
+<text x="24" y="339" xml:space="preserve"><tspan fill="#64748B"># com o Router do Laya, o app do upstream fica montado sem alteração:</tspan></text>
+<text x="24" y="360" xml:space="preserve"><tspan fill="#64748B"># POST /v1/systemone · POST /v1/systemone/batch · GET /health</tspan></text>
+</g>
+<text x="696" y="397" text-anchor="end" fill="#64748B" font-size="12" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">Mars · motor simulado, dados sintéticos · scripts/make_demo_assets.py</text>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="t d">
+<title id="t">Mars</title>
+<desc id="d">Símbolo da Mars Decision Platform: o planeta Marte com duas luas, Fobos (System-1, local) e Deimos (System-2, LLM).</desc>
+<defs>
+    <linearGradient id="bg-m" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A0F1E"/><stop offset="1" stop-color="#151C36"/>
+    </linearGradient>
+    <radialGradient id="glow-m" cx="0.18" cy="0.5" r="0.55">
+      <stop offset="0" stop-color="#E2541F" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#E2541F" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="card-m"><rect width="128" height="128" rx="28"/></clipPath>
+    <radialGradient id="planet-m" cx="0.36" cy="0.32" r="0.78">
+      <stop offset="0" stop-color="#FF9A62"/>
+      <stop offset="0.48" stop-color="#E2541F"/>
+      <stop offset="1" stop-color="#7E240C"/>
+    </radialGradient>
+    <linearGradient id="orbit-m" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#FFD8B5" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FDBA74" stop-opacity="0.75"/>
+    </linearGradient>
+    <clipPath id="front-m">
+      <rect x="-3.20" y="64.00" width="134.40" height="67.20"
+            transform="rotate(-18 64.00 64.00)"/>
+    </clipPath>
+    <clipPath id="disc-m"><circle cx="64.00" cy="64.00" r="25.20"/></clipPath>
+</defs>
+<rect width="128" height="128" rx="28" fill="url(#bg-m)"/><rect width="128" height="128" rx="28" fill="url(#glow-m)"/>
+    <g opacity="0.45"><ellipse cx="64.00" cy="64.00" rx="51.24" ry="17.64" fill="none" stroke="#C7D2FE" stroke-opacity="0.55" stroke-width="1.51" stroke-dasharray="1.01 4.37" stroke-linecap="round" transform="rotate(-18 64.00 64.00)"/><ellipse cx="64.00" cy="64.00" rx="38.64" ry="12.60" fill="none" stroke="url(#orbit-m)" stroke-width="2.69" transform="rotate(-18 64.00 64.00)"/></g>
+    <circle cx="64.00" cy="64.00" r="25.20" fill="url(#planet-m)"/>
+    <g clip-path="url(#disc-m)" opacity="0.13" fill="#7E240C">
+      <ellipse cx="67.36" cy="72.40" rx="21.84" ry="2.52" transform="rotate(-18 64.00 64.00)"/>
+      <ellipse cx="58.96" cy="57.28" rx="14.28" ry="1.68" transform="rotate(-18 64.00 64.00)"/>
+    </g>
+    <g clip-path="url(#front-m)"><ellipse cx="64.00" cy="64.00" rx="51.24" ry="17.64" fill="none" stroke="#C7D2FE" stroke-opacity="0.55" stroke-width="1.51" stroke-dasharray="1.01 4.37" stroke-linecap="round" transform="rotate(-18 64.00 64.00)"/><ellipse cx="64.00" cy="64.00" rx="38.64" ry="12.60" fill="none" stroke="url(#orbit-m)" stroke-width="2.69" transform="rotate(-18 64.00 64.00)"/></g>
+    <circle cx="109.59" cy="57.90" r="3.02" fill="#C7D2FE"/>
+    <circle cx="33.38" cy="80.17" r="3.86" fill="#FFD8B5"/>
+</svg>

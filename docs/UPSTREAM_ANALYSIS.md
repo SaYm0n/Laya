@@ -1,5 +1,7 @@
 # Análise do upstream — Laya (`NandhaKishorM/laya`)
 
+> **Público:** quem desenvolve · **Status:** referência da Fase 0 (`laya==0.3.23`) · **Atualizado:** 2026-10-02
+
 > Fase 0 — auditoria. Este documento descreve o que o projeto oficial **realmente** entrega hoje,
 > com base no código-fonte, e não apenas na documentação. Nada do upstream foi modificado.
 

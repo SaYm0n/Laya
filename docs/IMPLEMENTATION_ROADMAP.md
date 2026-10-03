@@ -1,5 +1,7 @@
 # Roadmap de implementação
 
+> **Público:** quem planeja e acompanha o projeto · **Status:** vigente · **Atualizado:** 2026-10-03
+>
 > Criado na Fase 0 e atualizado nas Fases 1 e 2 e nos Blocos A, B e C. Mantém as 21 fases (0–20) do plano original, mas **reordenadas** para que cada fase entregue algo usável
 > e produza os insumos da seguinte. A seção 3 mapeia a numeração original para a nova. Desde a F2 as fases são
 > entregues em **4 blocos** (modo LEAN, `DEVELOPMENT.md` §0), sem criar etapas novas.
@@ -21,7 +23,7 @@
 |---|---|---|
 | **A** | F3 + F4 — gateway, auditoria, shadow/advisory, avaliação e calibração | ✅ integrado (PR #3, dados sintéticos) |
 | **B** | F5 + F6 — LLM Gateway, System-1/System-2 e política de confiança | ✅ integrado (PR #3, dados sintéticos) |
-| **C** | F7 + F8 — Specialist Registry, dados e treino, rascunho do DG-1 | implementado (código e testes com stubs); treino real 🔒 GPU e DG-1 |
+| **C** | F7 + F8 — Specialist Registry, dados e treino, rascunho do DG-1 | ✅ integrado (PR #4; código e testes com stubs); treino real 🔒 GPU e DG-1 |
 | **D** | F9–F20 selecionadas — guardrails, MCP, RAG, observabilidade, Docker/implantação, benchmarks, segurança, RC | por necessidade |
 
 Cada bloco segue o fluxo implementar → testes focados → validação única → Draft PR → CI → revisão → merge, e
@@ -296,11 +298,10 @@ versionada e testes de redação e expurgo.
 
 ## 5. Próximo passo
 
-Revisar e integrar o **Bloco C** (F7 + F8). Em paralelo, decidir os itens ☐ de `docs/DATA_GOVERNANCE.md` e
-aprovar o DG-1: só então entram dados reais, o primeiro dataset do domínio e o primeiro treino numa GPU
+Os Blocos A, B e C estão integrados. Decidir os itens ☐ de `docs/DATA_GOVERNANCE.md` e aprovar o DG-1: só então entram dados reais, o primeiro dataset do domínio e o primeiro treino numa GPU
 (`DEVELOPMENT.md` §5.6). Rodar uma vez a suíte com pesos numa máquina com acesso ao Hugging Face e gravar o
 baseline dos golden tests (`DEVELOPMENT.md` §8). O próximo bloco é o **D**, escolhido pelas lacunas de
-`docs/VALUE_AND_GAPS.md` §6. O nome `laya_platform` continua provisório.
+`docs/VALUE_AND_GAPS.md` §6. O produto se chama Mars; o pacote `laya_platform` mantém o nome até uma troca própria.
 
 Melhoria registrada para o procedimento de atualização do upstream: um portão que detecte mudança no corpo/AST de
 `Agent._check_question` e obrigue a revisar o espelho `validate_question` da `DecisionSpec`.

@@ -1,5 +1,7 @@
 # Valor, cenários e lacunas — documento vivo
 
+> **Público:** quem avalia e planeja · **Status:** documento vivo
+
 > **Última atualização:** 2026-10-02 — Bloco C (F7 + F8, rascunho do DG-1).
 > **Regra:** atualizar a cada bloco implementado (`DEVELOPMENT.md` §0): estado das dores (§2), cenários (§4),
 > lacunas (§6), próximos ganhos (§7) e o histórico (§9). Status: ✅ entregue · 🟡 parcial · ⏳ planejado ·

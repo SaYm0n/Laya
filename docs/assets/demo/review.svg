@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1011" height="917" viewBox="0 0 1011 917" role="img" aria-label="Revisão humana · never_auto_if e fila de revisão">
+<title>Revisão humana · never_auto_if e fila de revisão</title>
+<rect width="1011" height="917" rx="14" fill="#0B1020"/>
+<rect x="0.5" y="0.5" width="1010" height="916" rx="14" fill="none" stroke="#1E293B"/>
+<path d="M0 44 H1011" stroke="#1E293B"/><circle cx="22" cy="22" r="6" fill="#F87171"/><circle cx="42" cy="22" r="6" fill="#FBBF24"/><circle cx="62" cy="22" r="6" fill="#34D399"/>
+<text x="505.5" y="27" text-anchor="middle" fill="#94A3B8" font-size="13" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">Revisão humana · never_auto_if e fila de revisão</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14">
+<text x="24" y="66" xml:space="preserve"><tspan fill="#86EFAC">$ </tspan><tspan fill="#E2E8F0">curl -s -X POST localhost:8000/api/v1/decide \</tspan></text>
+<text x="24" y="87" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -H "Authorization: Bearer $KEY" \</tspan></text>
+<text x="24" y="108" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -d '{"spec": "examples.support_triage", "state": "Vou cancelar o contrato se isso não for resolvido hoje."}'</tspan></text>
+<text x="24" y="129" xml:space="preserve"><tspan fill="#94A3B8">{</tspan></text>
+<text x="24" y="150" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"outcome"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"review"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="171" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"act"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">false</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="192" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"reasons"</tspan><tspan fill="#94A3B8">: [</tspan></text>
+<text x="24" y="213" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#FDBA74">"never_auto_if:churn_risk"</tspan></text>
+<text x="24" y="234" xml:space="preserve"><tspan fill="#94A3B8">  ],</tspan></text>
+<text x="24" y="255" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"review_id"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">1</tspan></text>
+<text x="24" y="276" xml:space="preserve"><tspan fill="#94A3B8">}</tspan></text>
+<text x="24" y="297" xml:space="preserve"></text>
+<text x="24" y="318" xml:space="preserve"><tspan fill="#86EFAC">$ </tspan><tspan fill="#E2E8F0">curl -s -X GET localhost:8000/api/v1/reviews \</tspan></text>
+<text x="24" y="339" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -H "Authorization: Bearer $KEY"</tspan></text>
+<text x="24" y="360" xml:space="preserve"><tspan fill="#94A3B8">[</tspan></text>
+<text x="24" y="381" xml:space="preserve"><tspan fill="#94A3B8">  {</tspan></text>
+<text x="24" y="402" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"id"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">1</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="423" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"trace_id"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"8d63b462-1905-4cbf-9cdd-3d55a8ffb820"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="444" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"reason"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"never_auto_if:churn_risk"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="465" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"status"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"open"</tspan></text>
+<text x="24" y="486" xml:space="preserve"><tspan fill="#94A3B8">  }</tspan></text>
+<text x="24" y="507" xml:space="preserve"><tspan fill="#94A3B8">]</tspan></text>
+<text x="24" y="528" xml:space="preserve"></text>
+<text x="24" y="549" xml:space="preserve"><tspan fill="#86EFAC">$ </tspan><tspan fill="#E2E8F0">curl -s -X POST localhost:8000/api/v1/reviews/1/resolve \</tspan></text>
+<text x="24" y="570" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -H "Authorization: Bearer $KEY" \</tspan></text>
+<text x="24" y="591" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -d '{"values": {"department": "account", "urgency": 3, "churn_risk": true}}'</tspan></text>
+<text x="24" y="612" xml:space="preserve"><tspan fill="#94A3B8">{</tspan></text>
+<text x="24" y="633" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"id"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">1</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="654" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"status"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"resolved"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="675" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"resolution"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="696" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"values"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="717" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"department"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"account"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="738" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"urgency"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">3</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="759" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"churn_risk"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">true</tspan></text>
+<text x="24" y="780" xml:space="preserve"><tspan fill="#94A3B8">    },</tspan></text>
+<text x="24" y="801" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"note"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">null</tspan></text>
+<text x="24" y="822" xml:space="preserve"><tspan fill="#94A3B8">  }</tspan></text>
+<text x="24" y="843" xml:space="preserve"><tspan fill="#94A3B8">}</tspan></text>
+<text x="24" y="864" xml:space="preserve"><tspan fill="#64748B"># a resolução vira rótulo 'human' para treinar especialistas</tspan></text>
+</g>
+<text x="987" y="901" text-anchor="end" fill="#64748B" font-size="12" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">Mars · motor simulado, dados sintéticos · scripts/make_demo_assets.py</text>
+</svg>

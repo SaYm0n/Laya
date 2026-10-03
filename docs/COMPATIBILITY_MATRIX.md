@@ -1,5 +1,7 @@
 # Matriz de compatibilidade
 
+> **Público:** quem desenvolve ou atualiza o upstream · **Status:** vigente · **Atualizado:** 2026-10-02
+
 > Criada na Fase 0 e atualizada na Fase 2, quando os contratos foram implementados. Define **o que a plataforma
 > promete manter compatível** com o Laya upstream (`laya==0.3.23`) e com o protocolo Jev, e como cada promessa é
 > verificada em `tests/compatibility/` (§11).

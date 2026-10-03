@@ -1,5 +1,7 @@
 # Licença e atribuição
 
+> **Público:** quem distribui ou usa comercialmente · **Status:** referência · **Atualizado:** 2026-10-03
+
 > Fase 0. Levantamento técnico das obrigações de licença ao construir sobre o Laya. **Não é parecer jurídico**;
 > para uso comercial relevante, valide com um advogado.
 
@@ -65,8 +67,8 @@ A licença **não** concede direito de usar nomes comerciais, marcas ou logotipo
 3. Adicionar na Fase 1 um `NOTICE` próprio, por exemplo:
 
 ```text
-Laya Decision Platform (nome provisório)
-Copyright 2026 <seu nome>
+Mars Decision Platform
+Copyright 2026 Márcio
 
 Este produto usa o Laya (https://github.com/NandhaKishorM/laya),
 desenvolvido pela Convai Innovations e colaboradores, licenciado sob a Apache License 2.0.
