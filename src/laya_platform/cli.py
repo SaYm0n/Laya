@@ -174,7 +174,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="laya-platform",
         description=(
-            "Laya Decision Platform (provisional name). Independent project built on top of "
+            "Mars Decision Platform. Independent project built on top of "
             "Laya; not affiliated with Convai Innovations."
         ),
     )

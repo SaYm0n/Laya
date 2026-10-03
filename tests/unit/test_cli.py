@@ -39,8 +39,9 @@ def test_version_text_reports_a_mismatched_upstream(monkeypatch: pytest.MonkeyPa
 
 def test_no_arguments_prints_help_and_succeeds(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main([]) == 0
-    out = capsys.readouterr().out
+    out = " ".join(capsys.readouterr().out.split())  # argparse wraps to the terminal width
     assert "usage: laya-platform" in out
+    assert "Mars Decision Platform" in out
     assert "not affiliated with Convai Innovations" in out
 
 

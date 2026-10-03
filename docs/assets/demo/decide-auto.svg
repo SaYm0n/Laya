@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="908" height="602" viewBox="0 0 908 602" role="img" aria-label="Decisão automatizada · POST /api/v1/decide">
+<title>Decisão automatizada · POST /api/v1/decide</title>
+<rect width="908" height="602" rx="14" fill="#0B1020"/>
+<rect x="0.5" y="0.5" width="907" height="601" rx="14" fill="none" stroke="#1E293B"/>
+<path d="M0 44 H908" stroke="#1E293B"/><circle cx="22" cy="22" r="6" fill="#F87171"/><circle cx="42" cy="22" r="6" fill="#FBBF24"/><circle cx="62" cy="22" r="6" fill="#34D399"/>
+<text x="454.0" y="27" text-anchor="middle" fill="#94A3B8" font-size="13" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">Decisão automatizada · POST /api/v1/decide</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14">
+<text x="24" y="66" xml:space="preserve"><tspan fill="#86EFAC">$ </tspan><tspan fill="#E2E8F0">curl -s -X POST localhost:8000/api/v1/decide \</tspan></text>
+<text x="24" y="87" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -H "Authorization: Bearer $KEY" \</tspan></text>
+<text x="24" y="108" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -d '{"spec": "examples.support_triage", "state": "Fui cobrado duas vezes na fatura deste mês."}'</tspan></text>
+<text x="24" y="129" xml:space="preserve"><tspan fill="#94A3B8">{</tspan></text>
+<text x="24" y="150" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"trace_id"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"3b0ab4e3-0870-46d5-afd7-69a7555c4f04"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="171" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"mode"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"gated"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="192" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"outcome"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"auto"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="213" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"act"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">true</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="234" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"reasons"</tspan><tspan fill="#94A3B8">: [],</tspan></text>
+<text x="24" y="255" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"suggestion"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="276" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"values"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="297" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"department"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"billing"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="318" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"urgency"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">2</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="339" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"churn_risk"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">false</tspan></text>
+<text x="24" y="360" xml:space="preserve"><tspan fill="#94A3B8">    },</tspan></text>
+<text x="24" y="381" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"bands"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="402" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"department"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"auto"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="423" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"urgency"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"auto"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="444" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"churn_risk"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"auto"</tspan></text>
+<text x="24" y="465" xml:space="preserve"><tspan fill="#94A3B8">    },</tspan></text>
+<text x="24" y="486" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"calibration_ref"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"eval-demo00000000"</tspan></text>
+<text x="24" y="507" xml:space="preserve"><tspan fill="#94A3B8">  }</tspan></text>
+<text x="24" y="528" xml:space="preserve"><tspan fill="#94A3B8">}</tspan></text>
+<text x="24" y="549" xml:space="preserve"><tspan fill="#64748B"># suggestion.answers (probabilidades e answer_confidence) e routing omitidos</tspan></text>
+</g>
+<text x="884" y="586" text-anchor="end" fill="#64748B" font-size="12" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">Mars · motor simulado, dados sintéticos · scripts/make_demo_assets.py</text>
+</svg>

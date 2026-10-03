@@ -1,9 +1,11 @@
 # Desenvolvimento
 
+> **Público:** quem desenvolve e opera · **Status:** vigente · **Atualizado:** 2026-10-02
+
 Guia de desenvolvimento: fluxo de trabalho (modo LEAN), instalação, comandos, categorias de teste, Decision Core
-(F2), gateway e avaliação (Bloco A), LLM e System-1/System-2 (Bloco B), CI, proteção da `main` e atualização do
-upstream. Cobre apenas o que já
-existe no repositório.
+(F2), gateway e avaliação (Bloco A), LLM e System-1/System-2 (Bloco B), especialistas, dados e treino (Bloco C),
+CI, proteção da `main` e atualização do upstream. Cobre apenas o que já existe no repositório. Para o uso do
+produto, passo a passo, veja [WORKFLOWS.md](WORKFLOWS.md).
 
 ## 0. Fluxo de trabalho (modo LEAN, permanente)
 

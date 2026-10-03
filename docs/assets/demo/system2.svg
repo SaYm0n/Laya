@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1028" height="812" viewBox="0 0 1028 812" role="img" aria-label="System-2 · escalonamento para um LLM com PII mascarada">
+<title>System-2 · escalonamento para um LLM com PII mascarada</title>
+<rect width="1028" height="812" rx="14" fill="#0B1020"/>
+<rect x="0.5" y="0.5" width="1027" height="811" rx="14" fill="none" stroke="#1E293B"/>
+<path d="M0 44 H1028" stroke="#1E293B"/><circle cx="22" cy="22" r="6" fill="#F87171"/><circle cx="42" cy="22" r="6" fill="#FBBF24"/><circle cx="62" cy="22" r="6" fill="#34D399"/>
+<text x="514.0" y="27" text-anchor="middle" fill="#94A3B8" font-size="13" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">System-2 · escalonamento para um LLM com PII mascarada</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14">
+<text x="24" y="66" xml:space="preserve"><tspan fill="#86EFAC">$ </tspan><tspan fill="#E2E8F0">curl -s -X POST localhost:8000/api/v1/decide \</tspan></text>
+<text x="24" y="87" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -H "Authorization: Bearer $KEY" \</tspan></text>
+<text x="24" y="108" xml:space="preserve"><tspan fill="#86EFAC">  </tspan><tspan fill="#E2E8F0">  -d '{"spec": "examples.support_triage", "state": "O app trava na segunda via. Meu e-mail: joana@exemplo.com"}'</tspan></text>
+<text x="24" y="129" xml:space="preserve"><tspan fill="#94A3B8">{</tspan></text>
+<text x="24" y="150" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"outcome"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"escalate"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="171" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"act"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">false</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="192" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"reasons"</tspan><tspan fill="#94A3B8">: [</tspan></text>
+<text x="24" y="213" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#FDBA74">"band:department=escalate"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="234" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#FDBA74">"band:urgency=review"</tspan></text>
+<text x="24" y="255" xml:space="preserve"><tspan fill="#94A3B8">  ],</tspan></text>
+<text x="24" y="276" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"suggestion"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="297" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"values"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="318" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"department"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"technical"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="339" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"urgency"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">2</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="360" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"churn_risk"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">false</tspan></text>
+<text x="24" y="381" xml:space="preserve"><tspan fill="#94A3B8">    },</tspan></text>
+<text x="24" y="402" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"source"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"system2"</tspan></text>
+<text x="24" y="423" xml:space="preserve"><tspan fill="#94A3B8">  },</tspan></text>
+<text x="24" y="444" xml:space="preserve"><tspan fill="#94A3B8">  </tspan><tspan fill="#93C5FD">"system2"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="465" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"tier"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"deep"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="486" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"model"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#FDBA74">"demo-llm"</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="507" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"input_tokens"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">100</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="528" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"output_tokens"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">10</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="549" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"cost"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#C4B5FD">0.0003</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="570" xml:space="preserve"><tspan fill="#94A3B8">    </tspan><tspan fill="#93C5FD">"agreement"</tspan><tspan fill="#94A3B8">: {</tspan></text>
+<text x="24" y="591" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"department"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">true</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="612" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"urgency"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">true</tspan><tspan fill="#94A3B8">,</tspan></text>
+<text x="24" y="633" xml:space="preserve"><tspan fill="#94A3B8">      </tspan><tspan fill="#93C5FD">"churn_risk"</tspan><tspan fill="#94A3B8">: </tspan><tspan fill="#86EFAC">true</tspan></text>
+<text x="24" y="654" xml:space="preserve"><tspan fill="#94A3B8">    }</tspan></text>
+<text x="24" y="675" xml:space="preserve"><tspan fill="#94A3B8">  }</tspan></text>
+<text x="24" y="696" xml:space="preserve"><tspan fill="#94A3B8">}</tspan></text>
+<text x="24" y="717" xml:space="preserve"></text>
+<text x="24" y="738" xml:space="preserve"><tspan fill="#64748B"># o que o provedor externo recebeu como estado:</tspan></text>
+<text x="24" y="759" xml:space="preserve"><tspan fill="#FDBA74">"O app trava na segunda via. Meu e-mail: [EMAIL]"</tspan></text>
+</g>
+<text x="1004" y="796" text-anchor="end" fill="#64748B" font-size="12" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">Mars · motor simulado, dados sintéticos · scripts/make_demo_assets.py</text>
+</svg>

@@ -1,4 +1,4 @@
-"""Laya Decision Platform (provisional name).
+"""Mars Decision Platform.
 
 An independent production layer built on top of Laya (https://github.com/NandhaKishorM/laya).
 Not affiliated with or endorsed by Convai Innovations.
