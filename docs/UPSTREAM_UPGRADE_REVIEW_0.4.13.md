@@ -7,7 +7,7 @@
 ## Situação verificada
 
 - Versão em uso: `laya==0.3.23` em `pyproject.toml`, `src/laya_platform/_upstream.py` e `uv.lock`.
-- Versão candidata: `v0.4.13`, commit publicado `6f0496f`, lançada em 21/10/2026.
+- Versão candidata: `v0.4.13`, release publicada em 21/10/2026.
 - Comparação GitHub [v0.3.23...v0.4.13](https://github.com/NandhaKishorM/laya/compare/v0.3.23...v0.4.13): **1.342 commits à frente**; a resposta de comparação retornou 300 arquivos (limite da API; **não é inventário completo**).
 - Comparação por blob confirmou alterações em `laya/agent.py`, `laya/router.py`, `laya/serve.py`, `laya/confidence.py`, `laya/structured.py`, `laya/common.py`, `laya/__init__.py` e na receita `notebooks/laya_finetune_typed_decisions_mps.py`.
 - O arquivo `LICENSE` permanece idêntico entre as duas tags e `pyproject.toml` do upstream v0.4.13 ainda declara Apache-2.0. **Isso não valida as licenças dos novos artefatos/dependências/datasets.**
